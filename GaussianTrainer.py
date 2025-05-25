@@ -104,7 +104,10 @@ class GaussianTrainer:
 
     def _compute_guidance_loss(self, images: torch.Tensor, poses: torch.Tensor, step_ratio: float) -> torch.Tensor:
         """Compute loss using guidance model"""
-        return self.mvdream.train_step(images, poses, step_ratio=step_ratio)
+        gl = self.mvdream.train_step(images, poses, step_ratio=step_ratio)
+        gl.backward()
+        return gl
+
 
     def _should_densify(self) -> bool:
         """Check if we should perform densification at current step"""
@@ -120,17 +123,14 @@ class GaussianTrainer:
         self.renderer.gaussians_handler.update_mean_lr(self.step)
         render_resolution = self._get_resolution_for_step(min(1, self.step / 500))
         out, images, poses, _ = self._render_training_views(render_resolution)
-        loss = self._compute_guidance_loss(images, poses, min(1, self.step / 500))
-        loss.backward()
+        gl = self._compute_guidance_loss(images, poses, min(1, self.step / 500))
         self.optimizer.step()
-        self.optimizer.zero_grad()
-        
         if self._should_densify():
             self._handle_densification(out)
-
         ender.record()
+        self.optimizer.zero_grad()
         torch.cuda.synchronize()
-        return starter.elapsed_time(ender),loss
+        return starter.elapsed_time(ender),gl
 
     def _handle_densification(self, render_output):
         """Handle densification and pruning"""
@@ -146,19 +146,6 @@ class GaussianTrainer:
 
         if self.step % 250 == 0:
             self.renderer.gaussians_handler.opacity_decay()
-
-    def train(self, iters=500):
-        """Main training loop without GUI"""
-        #HANY I dont think we'll need this after marwan completes the gui
-        if iters > 0:
-            self.prepare_train()
-            progress = tqdm(range(iters), desc="Training")
-            
-            for _ in progress:
-                train_time,_ = self.train_step()
-                progress.set_postfix({"time": f"{train_time:.2f}ms"})
-        self.save_model(mode=0)
-        self.save_model(mode=2)
 
 
     def save_model(self, mode=1, texture_size=1024, user_save=False, model_name="", save_dir=""):

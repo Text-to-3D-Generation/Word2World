@@ -8,10 +8,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
     parser.add_argument("--gui", action="store_true", help="enable GUI")
     print(f"Prompt received: {args.prompt}")
+    gui = GUITrainer(args.prompt)
+    gui.run()
 
-    if args.gui:
-        gui = GUITrainer(args.prompt)
-        gui.run()
-    else:
-        non_gui = GaussianTrainer(args.prompt)
-        non_gui.train()
