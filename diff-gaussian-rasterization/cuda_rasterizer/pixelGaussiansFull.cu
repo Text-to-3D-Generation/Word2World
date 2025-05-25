@@ -47,9 +47,9 @@ __device__ void PixelGaussians(
     bool&                 done            // whether pixel is already opaque
 ) {
     // ── Constants controlling numerical cut-offs ──────────────────────────
-       float MIN_ALPHA = 1.0f / 255.0f;   // ignore alpha below 0.004
-       float MIN_TRANS = 0.0001f;         // stop when T < 1e-4
-       float MAX_ALPHA = 0.99f;           // clamp single-splat opacity
+    float MIN_ALPHA = 1.0f / 255.0f;   // ignore alpha below 0.004
+    float MIN_TRANS = 0.0001f;         // stop when T < 1e-4
+    float MAX_ALPHA = 0.99f;           // clamp single-splat opacity
 
 
     // ── 1.  Seed *local* copies of the accumulators ───────────────────────
@@ -65,11 +65,11 @@ __device__ void PixelGaussians(
     uint32_t localId = contributor;          // running ID for “#contrib”
 
     // ── 2.  Set up cursor pointers so we can advance through the batch ────
-       float2* mP = meanPtr;
-       float3* cP = covPtr;
-       float4* oP = copPtr;
-       float*  fP = featsPtr;
-       float*  dP = depthsPtr;
+    float2* mP = meanPtr;
+    float3* cP = covPtr;
+    float4* oP = copPtr;
+    float*  fP = featsPtr;
+    float*  dP = depthsPtr;
 
     // ── 3.  Main loop over Gaussians in this batch ────────────────────────
     int i = 0;
