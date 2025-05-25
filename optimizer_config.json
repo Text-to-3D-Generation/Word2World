@@ -1,0 +1,26 @@
+[
+  {
+    "param": "mean",
+    "lr": 0.01
+  },
+  {
+    "param": "sh_coefficients_dc",
+    "lr": 0.01
+  },
+  {
+    "param": "sh_coefficients_ac",
+    "lr": 0.0005
+  },
+  {
+    "param": "opacity",
+    "lr": 0.05
+  },
+  {
+    "param": "svec",
+    "lr": 0.005
+  },
+  {
+    "param": "quaternion",
+    "lr": 0.005
+  }
+]
