@@ -19,7 +19,7 @@ class GaussianTrainer:
         self.device = torch.device("cuda")
         point_cloud = generate_random_point_cloud(500)
         self.renderer = Renderer(pcd = point_cloud)
-        self.cam = DynamicCamera(800, 800, radius=3.8, fovy=49.1)
+        self.cam = DynamicCamera(800, 800, radius=3.8)
         
         # Training state
         self.training = False

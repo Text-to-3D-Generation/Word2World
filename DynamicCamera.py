@@ -155,7 +155,7 @@ class DynamicCamera:
     - Supports OpenGL coordinate convention (+Z forward)
     """
     
-    def __init__(self, W, H, radius=2, fovy=60, near=0.01, far=100):
+    def __init__(self, W, H, radius=2, fovy=49.1, near=0.01, far=100):
         """Initialize camera with viewport and projection parameters.
         
         Args:
