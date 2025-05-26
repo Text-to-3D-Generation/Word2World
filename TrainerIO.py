@@ -3,6 +3,7 @@ import json
 import numpy as np
 import torch
 from typing import Dict, Any
+from misc_utils import get_projection_matrix
 from plyfile import PlyData, PlyElement
 import zlib
 import torch.nn.functional as F
@@ -11,7 +12,6 @@ from DynamicCamera import rotate_camera
 import nvdiffrast.torch as dr
 from mesh import safe_normalize
 from grid_put import mipmap_linear_grid_put_2d
-from StaticCamera import StaticCamera
 
 class TrainerIO:
     """Handles all model input/output operations with versioning and compression support"""
@@ -138,23 +138,69 @@ class TrainerIO:
             renderer.set_resolution(render_resolution, render_resolution)
 
         pose = rotate_camera(ver, hor, cam.radius)
-        cur_cam = StaticCamera(
-            pose,
-            render_resolution,           # width
-            render_resolution,           # height
-            cam.fovy,
-            cam.fovx,
-            cam.near,
-            cam.far,
+        # cur_cam = StaticCamera(
+        #     pose,
+        #     render_resolution,           # width
+        #     render_resolution,           # height
+        #     cam.fovy,
+        #     cam.fovx,
+        #     cam.near,
+        #     cam.far,
+        # )
+        if not isinstance(pose, torch.Tensor):
+            c2w = torch.tensor(pose, dtype=torch.float32)
+
+        c2w = c2w.to(torch.float32).cuda()
+
+        IW = render_resolution
+        IH = render_resolution
+        FY = cam.fovy
+        FX = cam.fovx
+        ZN = cam.near
+        ZF = cam.far
+
+        # Compute inverse: world-to-camera
+        W_to_C = torch.linalg.inv(c2w)
+
+        # Apply NeRF coordinate system adjustment
+        W_to_C[1:3, :3] *= -1  # Flip Y and Z rotation axes
+        W_to_C[:3, 3] *= -1    # Flip translation
+
+        # Store transform in PyTorch (transpose for matmul order)
+        W_V_transform = W_to_C.transpose(0, 1).contiguous()
+
+        # Projection matrix from external utility (assumed to be torch-compatible)
+        Proj_Matrix = (
+            get_projection_matrix(
+                z_near=ZN,
+                z_far=ZF,
+                fov_x=FX,
+                fov_y=FY
+            )
+            .transpose(0, 1)
+            .contiguous()
+            .cuda()
         )
-        out      = renderer.render(cur_cam)
+
+        # Full projection transform: MVP matrix
+        FULL_PROJ = W_V_transform @ Proj_Matrix
+
+        # Camera center in world space
+        CC = -c2w[:3, 3]
+
+        out = renderer.render(
+            FX, FY, 
+            W_V_transform, FULL_PROJ,
+            CC, 
+            IW, IH)
+        
         rgb_img  = out["image"]                 # (3, H, W)
         H, W     = rgb_img.shape[-2:]           # read true resolution
         rgb_img  = rgb_img.unsqueeze(0)         # (1, 3, H, W)
 
         # ---------- 2)  Transform vertices into clip space ----------
         pose_t = torch.from_numpy(pose.astype(np.float32)).to(device)
-        proj   = torch.from_numpy(cam.perspective.astype(np.float32)).to(device)
+        proj   = torch.from_numpy(cam.get_perspective().astype(np.float32)).to(device)
 
         v_cam = torch.matmul(
             F.pad(mesh.v, pad=(0, 1), mode='constant', value=1.0),

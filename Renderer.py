@@ -98,7 +98,7 @@ def _render_gaussians_inline(
                 ctx.fx        = tanfovx
                 ctx.fy        = tanfovy
                 ctx.sh_deg    = sh_degree
-                ctx.campos    = campos
+                ctx.camera_position    = campos
                 ctx.debug     = debug
 
                 ctx.save_for_backward(colors_precomp, means3D, scales, rotations,
@@ -133,7 +133,7 @@ def _render_gaussians_inline(
                     g_alpha,
                     sh,
                     ctx.sh_deg,
-                    ctx.campos,
+                    ctx.camera_position,
                     geomBuf,
                     ctx.num_rend,
                     binBuf,
@@ -188,12 +188,15 @@ class Renderer:
             device="cuda"
         )
     
-
-
     def render(
         self,
-        viewpoint_camera,
-        scaling_modifier: float = 1.0,
+        FoVx,
+        FoVy,
+        world_view_transform,
+        full_proj_transform,
+        camera_center,
+        image_width,
+        image_height,
         bg_color: Optional[torch.Tensor] = None,
     ) -> Dict[str, torch.Tensor]:
         scaling_modifier = 1
@@ -235,13 +238,13 @@ class Renderer:
         # ------------------------------------------------------------
         # 2.  Camera / render parameters (all scalars & matrices)
         # ------------------------------------------------------------
-        tanfovx = math.tan(viewpoint_camera.FoVx * 0.5)
-        tanfovy = math.tan(viewpoint_camera.FoVy * 0.5)
+        tanfovx = math.tan(FoVx * 0.5)
+        tanfovy = math.tan(FoVy * 0.5)
 
         bg          = self.bg_color if bg_color is None else bg_color
-        viewmatrix  = viewpoint_camera.world_view_transform
-        projmatrix  = viewpoint_camera.full_proj_transform
-        campos      = viewpoint_camera.camera_center
+        viewmatrix  = world_view_transform
+        projmatrix  = full_proj_transform
+        campos      = camera_center
         prefiltered = False
         debug       = False
 
@@ -312,7 +315,7 @@ class Renderer:
                 torch.cuda.empty_cache()      # free any leaked buffers
                 torch.cuda.synchronize()      # flush the error state
 
-                H, W = viewpoint_camera.image_height, viewpoint_camera.image_width
+                H, W = image_height, image_width
                 dtype = means3D.dtype
                 device = means3D.device
 

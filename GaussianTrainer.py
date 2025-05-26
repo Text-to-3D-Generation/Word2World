@@ -7,9 +7,9 @@ from tqdm import tqdm
 from typing import Optional, Dict, Any
 from Renderer import Renderer
 from DynamicCamera import DynamicCamera, rotate_camera,safe_normalize
-from StaticCamera import StaticCamera
 from guidance.mvdream_utils import MVDream
 from TrainerIO import TrainerIO
+from misc_utils import get_projection_matrix
 from primitives import generate_random_point_cloud
 class GaussianTrainer:
     """Core training functionality without GUI dependencies"""
@@ -77,13 +77,54 @@ class GaussianTrainer:
             view = pose
             views.append(view)
             
-            cam = StaticCamera(
-                view, resolution, resolution,
-                self.cam.fovy, self.cam.fovx, self.cam.near, self.cam.far
+            if not isinstance(view, torch.Tensor):
+                c2w = torch.tensor(view, dtype=torch.float32)
+
+            c2w = c2w.to(torch.float32).cuda()
+
+            IW = resolution
+            IH = resolution
+            FY = self.cam.fovy
+            FX = self.cam.fovx
+            ZN = self.cam.near
+            ZF = self.cam.far
+
+            # Compute inverse: world-to-camera
+            W_to_C = torch.linalg.inv(c2w)
+
+            # Apply NeRF coordinate system adjustment
+            W_to_C[1:3, :3] *= -1  # Flip Y and Z rotation axes
+            W_to_C[:3, 3] *= -1    # Flip translation
+
+            # Store transform in PyTorch (transpose for matmul order)
+            W_V_transform = W_to_C.transpose(0, 1).contiguous()
+
+            # Projection matrix from external utility (assumed to be torch-compatible)
+            Proj_Matrix = (
+                get_projection_matrix(
+                    z_near=ZN,
+                    z_far=ZF,
+                    fov_x=FX,
+                    fov_y=FY
+                )
+                .transpose(0, 1)
+                .contiguous()
+                .cuda()
             )
+
+            # Full projection transform: MVP matrix
+            FULL_PROJ = W_V_transform @ Proj_Matrix
+
+            # Camera center in world space
+            CC = -c2w[:3, 3]
             
             # Render and store image
-            render_out = self.renderer.render(cam, bg_color=torch.tensor([1, 1, 1], dtype=torch.float32, device=self.device))
+            render_out = self.renderer.render(
+                    FX, FY, 
+                    W_V_transform, FULL_PROJ,
+                    CC, 
+                    IW, IH,
+                bg_color=torch.tensor([1, 1, 1], dtype=torch.float32, device=self.device))
             images.append(render_out["image"].unsqueeze(0))
             
             # Store first view's full output
@@ -141,11 +182,11 @@ class GaussianTrainer:
         #if self.step and self.step % self.opt.aggressive_split_interval == 0:
             #self.renderer.gaussians_handler.agressive_splitting(self.opt.th1,self.opt.th2,self.opt.num_tiles,self.opt.split_factor)
         
-        if self.step % 50 == 0:
+        if self.step % 100 == 0:
             self.renderer.gaussians_handler.densification_cycle(max_grad=0.01,min_opacity=0.01)
 
-        if self.step % 250 == 0:
-            self.renderer.gaussians_handler.opacity_decay()
+        # if self.step % 250 == 0:
+        #     self.renderer.gaussians_handler.opacity_decay()
 
 
     def save_model(self, mode=1, texture_size=1024, user_save=False, model_name="", save_dir=""):
