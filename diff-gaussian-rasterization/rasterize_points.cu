@@ -9,8 +9,8 @@
 #include <stdio.h>
 #include <cuda_runtime_api.h>
 #include <memory>
-#include "cuda_rasterizer/config.h"
-#include "cuda_rasterizer/rasterizer.h"
+#include "config.h"
+#include "rasterizer.h"
 #include <fstream>
 #include <string>
 #include <functional>
