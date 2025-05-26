@@ -115,32 +115,12 @@ def _render_gaussians_inline(
                  radii, sh, geomBuf, binBuf, imgBuf, alpha) = ctx.saved_tensors
 
                 g_means2D, g_colors, g_opac, g_means3D, \
-                g_cov3D,  g_sh,     g_scales, g_rots = _C.rasterize_gaussians_backward(
-                    ctx.bg,
-                    means3D,
-                    radii,
-                    colors_precomp,
-                    scales,
-                    rotations,
-                    ctx.scale_mod,
-                    cov3Ds_precomp,
-                    ctx.vmat,
-                    ctx.pmat,
-                    ctx.fx,
-                    ctx.fy,
-                    g_color,
-                    g_depth,
-                    g_alpha,
-                    sh,
-                    ctx.sh_deg,
-                    ctx.camera_position,
-                    geomBuf,
-                    ctx.num_rend,
-                    binBuf,
-                    imgBuf,
+                g_cov3D,  g_sh,     g_scales, g_rots = _C.rasterize_gaussians_backward(ctx.bg,means3D,radii,
+                    colors_precomp,scales,rotations,ctx.scale_mod,cov3Ds_precomp,ctx.vmat,ctx.pmat,ctx.fx,ctx.fy,g_color,g_depth,
+                    g_alpha,sh,ctx.sh_deg,ctx.camera_position,geomBuf,ctx.num_rend,
+                    binBuf,imgBuf,
                     alpha,
-                    ctx.debug,
-                )
+                    ctx.debug,)
 
                 # Return gradients for every forward input (None for scalars)
                 return (
@@ -160,20 +140,9 @@ def _render_gaussians_inline(
     # ------------------------------------------------------------
     # 3.  Invoke the cached Function
     # ------------------------------------------------------------
-    return _render_gaussians_inline._Func.apply(
-        means3D, means2D, shs, colors_precomp, opacity,
-        scales, rotations, cov3D_precomp,
-        bg, scale_modifier, viewmatrix, projmatrix,
-        tanfovx, tanfovy, sh_degree, campos,
-        prefiltered, debug
-    )
-
-
-
-
-
-# ----------------------------------------------------------------------
-
+    return _render_gaussians_inline._Func.apply(means3D, means2D, shs, colors_precomp, opacity,scales, rotations, cov3D_precomp,bg, scale_modifier, viewmatrix, projmatrix,
+    tanfovx, tanfovy, sh_degree, campos,
+    prefiltered, debug)
 
 class Renderer:
     """Differentiable 3D Gaussian Splatting renderer
@@ -182,10 +151,7 @@ class Renderer:
     def __init__(self, pcd, white_background: bool = True):
         self.white_background = white_background
         self.gaussians_handler = GaussiansHandler(pcd)
-        self.bg_color = torch.tensor(
-            [1, 1, 1] if white_background else [0, 0, 0],
-            dtype=torch.float32,
-            device="cuda"
+        self.bg_color = torch.tensor([1, 1, 1] if white_background else [0, 0, 0],dtype=torch.float32,device="cuda"
         )
     
     def render(self,FoVx,FoVy,world_view_transform,full_proj_transform,camera_center,image_width,image_height,bg_color: Optional[torch.Tensor] = None,):
@@ -263,8 +229,6 @@ class Renderer:
                 device = means3D.device
 
                 rendered_image = torch.zeros((H, W, 3), device=device, dtype=dtype)
-                rendered_depth = torch.full((H, W), float("inf"), device=device, dtype=dtype)
-                rendered_alpha = torch.zeros((H, W), device=device, dtype=dtype)
                 radii          = torch.zeros(means3D.shape[0], device=device, dtype=dtype)
 
             else:

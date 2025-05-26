@@ -12,8 +12,7 @@ from TrainerIO import TrainerIO
 from misc_utils import get_projection_matrix
 from primitives import generate_random_point_cloud
 class GaussianTrainer:
-    """Core training functionality without GUI dependencies"""
-    
+
     def __init__(self, prompt):
         self.prompt = prompt
         self.device = torch.device("cuda")
@@ -22,7 +21,7 @@ class GaussianTrainer:
         self.cam = DynamicCamera(800, 800, radius=3.8)
         self.training = False
         self.optimizer = None
-
+        
     def prepare_train(self):
         """Setup training environment"""
         self.renderer.gaussians_handler.optimizer_setup()
