@@ -56,7 +56,7 @@ class GUITrainer:
             * Start/stop and export buttons
 
     create_history_tab(self)
-        - Sets up the "History" tab with a scrollable frame (currently placeholder).
+        - Sets up the "History" tab with a scrollable frame.
 
     update_images(self)
         - Updates the displayed images with trainer outputs every few milliseconds.
@@ -299,7 +299,7 @@ class GUITrainer:
                 self.image_labels.append(img_label)
                 self.image_containers.append(container)
 
-        # === Enhanced Prompt Bar ===
+        # === Prompt Bar ===
         control_frame = tb.Frame(content_frame)
         control_frame.pack(fill=X, pady=15, padx=10)
 
@@ -328,7 +328,7 @@ class GUITrainer:
         button_frame = tb.Frame(inner_frame)
         button_frame.pack(side=LEFT, padx=(5, 5))
 
-        # Toggle button with updated style
+        # Toggle button
         self.toggle_button = tb.Button(
             button_frame,
             image=self.icon_start,
@@ -337,7 +337,7 @@ class GUITrainer:
         )
         self.toggle_button.pack(side=LEFT, padx=2)
 
-        # Export button with updated style
+        # Export button
         self.export_button = tb.Button(
             button_frame,
             image=self.icon_export,
