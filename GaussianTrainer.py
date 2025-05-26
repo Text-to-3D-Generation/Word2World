@@ -175,9 +175,9 @@ class GaussianTrainer:
 
     def _handle_densification(self, render_output):
         """Handle densification and pruning"""
-        visibility_filter = render_output["visibility_filter"]
-        viewspace_points = render_output["viewspace_points"]
-        self.renderer.gaussians_handler.collect_densification_info(viewspace_points, visibility_filter)
+        avaialble_pts = render_output["avaialble_pts"]
+        accum_grads = render_output["accum_grads"]
+        self.renderer.gaussians_handler.collect_densification_info(accum_grads, avaialble_pts)
 
         #if self.step and self.step % self.opt.aggressive_split_interval == 0:
             #self.renderer.gaussians_handler.agressive_splitting(self.opt.th1,self.opt.th2,self.opt.num_tiles,self.opt.split_factor)

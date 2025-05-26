@@ -42,27 +42,16 @@ class Densification:
             dict: Dictionary of selected parameters.
         """
         mask = mask.to(self.device)
-        param_dict = {
-          group["name"]: group["params"][0]
-          for group in self.optimizer.optimizer.param_groups
-          if group.get("params")  # only include if non-empty
-        }
-
-        # Now you can access parameters directly:
+        param_dict = {group["name"]: group["params"][0] for group in self.optimizer.optimizer.param_groups
+        if group.get("params")}
         mean_tensor = param_dict["mean"]
         sh_coefficients_dc_tensor = param_dict["sh_coefficients_dc"]
         sh_coefficients_ac_tensor = param_dict["sh_coefficients_ac"]
         opacity_tensor = param_dict["opacity"]
         svec_tensor = param_dict["svec"]
         quaternion_tensor = param_dict["quaternion"]
-        params = {
-            "mean": mean_tensor[mask],
-            "sh_coefficients_dc": sh_coefficients_dc_tensor[mask],
-            "sh_coefficients_ac": sh_coefficients_ac_tensor[mask],
-            "opacity": opacity_tensor[mask],
-            "svec": svec_tensor[mask],
-            "quaternion": quaternion_tensor[mask]
-        }
+        params = {"mean": mean_tensor[mask],"sh_coefficients_dc": sh_coefficients_dc_tensor[mask],"sh_coefficients_ac": sh_coefficients_ac_tensor[mask],"opacity": opacity_tensor[mask],"svec": svec_tensor[mask],
+            "quaternion": quaternion_tensor[mask]}
         return params
 
     # ===============================
@@ -83,16 +72,12 @@ class Densification:
         Returns:
             Tensor: Boolean mask indicating points to be cloned.
         """
-        # Compute normalized gradient magnitude and check if above threshold
+        # comput normalized gradient magnitude and check if above threshold
         grads_norm = (accum_grads / (grads_cnt + 1e-5))
         grad_mask = torch.where(torch.norm(grads_norm, dim=-1) >= grad_thresh, True, False)
-        # Check if scaling factors are within the split threshold
         svec_mask = (svec <= split_thresh).any(dim=-1)
-
         #print(grad_mask.shape)
         #print(svec_mask.shape)
-
-        # Select points satisfying both conditions
         selected_pts_mask = torch.logical_and(grad_mask, svec_mask)
         print(selected_pts_mask.shape)
         return selected_pts_mask
@@ -125,13 +110,8 @@ class Densification:
         Returns:
             tuple: (New parameters dictionary, number of newly cloned points)
         """
-        # Step 1: Detect points to be cloned
         mask = self._clone_detection(accum_grads, grads_cnt, grad_thresh, split_thresh, svec)
-
-        # Step 2: Clone selected points
         all_params = self._clone_treatment(mask)
-
-        # Return new parameters and count of cloned points
         return all_params, torch.count_nonzero(mask).item()
 
     #######################################################################################################
@@ -154,14 +134,9 @@ class Densification:
         Returns:
             Tensor: Boolean mask indicating points to be splitted.
         """
-        # Compute normalized gradient magnitude and check if above threshold
         grads_norm = (accum_grads / (grads_cnt + 1e-5))
         grad_mask = torch.where(torch.norm(grads_norm, dim=-1) >= grad_thresh, True, False)
-
-        # Check if scaling factors are greater than the split threshold
         svec_mask = (svec.data > split_thresh).any(dim=-1)
-
-        # Select points satisfying both conditions
         selected_pts_mask = torch.logical_and(grad_mask, svec_mask)
         return selected_pts_mask
 
@@ -177,28 +152,17 @@ class Densification:
             dict: Newly created parameters.
         """
         num_split = mask.sum().item()
-        
-
-        # Duplicate selected points
         new_params = self.get_params_by_mask(mask)
-
         split_mean = new_params["mean"].data.repeat(split_factor, 1)
         split_quaternion = new_params["quaternion"].data.repeat(split_factor, 1)
         split_sh_coefficients_dc = new_params["sh_coefficients_dc"].repeat(split_factor,1,1)
         split_sh_coefficients_ac = new_params["sh_coefficients_ac"].repeat(split_factor,1,1)
-        split_opacity = new_params["opacity"].data.repeat(split_factor,1)
-        
+        split_opacity = new_params["opacity"].data.repeat(split_factor,1)        
         split_svec = svec.data[mask].repeat(split_factor, 1)
-
-        # quaternion matrices for sampled offsets
         split_rotmat = qvec2rotmat_batched(split_quaternion).transpose(-1, -2)
         split_gn = (torch.randn(num_split * split_factor, 3, device=self.device) * split_svec )
         split_sampled_mean = split_mean + torch.einsum("bij, bj -> bi", split_rotmat, split_gn)
-
-        # Adjust the scale for new points
         split_raw_svec = self.svec_inv_act((split_svec / (split_factor*0.8))) #revisit this for the tile based
-
-        # Construct the new parameter dictionary
         new_params = {
             "mean":split_sampled_mean ,
             "sh_coefficients_dc": split_sh_coefficients_dc,

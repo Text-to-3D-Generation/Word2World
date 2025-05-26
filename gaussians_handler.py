@@ -296,14 +296,14 @@ class GaussiansHandler:
             )
             self.gaussians.append(g)
     
-    def split_cycle(self, mean2d_thresh, scene_extent):
+    def split_cycle(self, mean2d_thresh):
 
         total_svec = []
         for gaussian in self.gaussians:
             total_svec.append(gaussian.svec)
         total_svec = torch.stack(total_svec)
         # total_svec = self.get_param_group_by_name("svec")
-        new_params, num_split, mask = self.densifier.split_shapes(self.mean_gradient_accum, self.counter,mean2d_thresh,0.01*scene_extent,torch.exp(total_svec),2,0.8)
+        new_params, num_split, mask = self.densifier.split_shapes(self.mean_gradient_accum, self.counter,mean2d_thresh,4,torch.exp(total_svec),2,0.8)
         self.update_parameters(new_params)
         
         if num_split > 0:
@@ -317,14 +317,14 @@ class GaussiansHandler:
         
         return num_split
     
-    def clone_cycle(self, mean2d_thresh, scene_extent):
+    def clone_cycle(self, mean2d_thresh):
 
         total_svec = []
         for gaussian in self.gaussians:
             total_svec.append(gaussian.svec)
         total_svec = torch.stack(total_svec)
         # total_svec = self.get_param_group_by_name("svec")
-        new_params, num_cloned = self.densifier.clone_shapes(self.mean_gradient_accum,self.counter,mean2d_thresh,0.01*scene_extent,torch.exp(total_svec)
+        new_params, num_cloned = self.densifier.clone_shapes(self.mean_gradient_accum,self.counter,mean2d_thresh,0.04,torch.exp(total_svec)
         )
         
         self.update_parameters(new_params)
@@ -336,7 +336,7 @@ class GaussiansHandler:
             
         return num_cloned
     
-    def prune_cycle(self, alpha_thresh, radii2d_thresh=1, extent=4):
+    def prune_cycle(self, alpha_thresh):
         total_opacity = []
         total_svec = []
         for gaussian in self.gaussians:
@@ -346,10 +346,7 @@ class GaussiansHandler:
         total_opacity = torch.stack(total_opacity)
         total_svec = torch.stack(total_svec)
 
-        # total_opacity = self.get_param_group_by_name("opacity")
-        # total_svec = self.get_param_group_by_name("svec")
-
-        new_params, num_prunes, mask = self.densifier.prune_shapes(torch.sigmoid(total_opacity),torch.exp(total_svec),radii2d_thresh,alpha_thresh,extent
+        new_params, num_prunes, mask = self.densifier.prune_shapes(torch.sigmoid(total_opacity),torch.exp(total_svec),1,alpha_thresh,4
         )
         self.update_parameters(new_params)
         if num_prunes > 0:
@@ -357,14 +354,14 @@ class GaussiansHandler:
             self.counter = self.counter[~mask]
         return num_prunes
     
-    def densification_cycle(self, max_grad, min_opacity, extent=4, max_screen_size=1):  
-        num_clone = self.clone_cycle(max_grad, extent)
+    def densification_cycle(self, max_grad, min_opacity):  
+        num_clone = self.clone_cycle(max_grad)
         print(f"Number of clones: {num_clone}")
-        num_split = self.split_cycle(max_grad, extent)
+        num_split = self.split_cycle(max_grad)
         print(f"Number of splits: {num_split}")
         self.mean_gradient_accum = torch.zeros((len(self.gaussians), 1), device="cuda")
         self.counter = torch.zeros((len(self.gaussians), 1), device="cuda")
-        num_prune = self.prune_cycle(min_opacity, max_screen_size, extent)
+        num_prune = self.prune_cycle(min_opacity)
         print(f"Number of prunes: {num_prune}")
         torch.cuda.empty_cache()
 

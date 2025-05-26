@@ -22,11 +22,6 @@ class OptimizerManager:
         updated_params = {}
 
         for group in self.optimizer.param_groups:
-
-            if len(group["params"]) ==0:
-                continue
-            assert len(group["params"]) == 1, f"{group['name']} should have a single parameter tensor"
-
             param_tensor = group["params"][0]
             #print(group['name'])
             stored_state = self.optimizer.state.get(param_tensor, None)

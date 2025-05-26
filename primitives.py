@@ -55,7 +55,6 @@ def convert_pcd_to_gaussians(pcd):
     """Convert a PointCloud to a list of GaussianPrimitive objects."""
     points = pcd.points  #  on gpu
     colors = pcd.sh_coefficients
-
     N = points.shape[0]
     diff = points.unsqueeze(0) - points.unsqueeze(1)  # [N, N, 3]
     dist2 = (diff * diff).sum(-1)  # [N, N]
@@ -65,22 +64,14 @@ def convert_pcd_to_gaussians(pcd):
     avg_dist2 = knn_dists.mean(dim=1)
     avg_dist3 = torch.clamp_min(avg_dist2,0.0000001)
     svec = torch.log(torch.sqrt(avg_dist3))[..., None].repeat(1, 3)  # [N, 3]
-
-    # Initialize quaternions (identity)
     quaternions = torch.zeros((N, 4), device="cuda")
     quaternions[:, 0] = 1.0
-
-    # Initial opacity (inverse sigmoid of small value)
     opacities = inverse_sigmoid(0.1 * torch.ones((N, 1), device="cuda"))
-
-    # Initialize SH features
     sh_order = 3
     feature_dim = (sh_order + 1) ** 2
     features = torch.zeros((N, 3, feature_dim), device="cuda")
     features[:, :, 0] = colors  # fill DC term (band 0)
     features[:, :, 1:] = 0.0  # AC components zero
-
-    # Construct Gaussians
     gaussians = []
     for i in range(N):
         g = GaussianPrimitive(
