@@ -283,9 +283,6 @@ class GaussiansHandler:
         self.mean_gradient_accum[update_filter] += torch.norm(viewspace_point_tensor.grad[update_filter,:2], dim=-1, keepdim=True)
         self.counter[update_filter] += 1
 
-    def reset_densification_info(self):
-        self.mean_gradient_accum = torch.zeros((len(self.gaussians), 1), device="cuda")
-        self.counter = torch.zeros((len(self.gaussians), 1), device="cuda")
     
     def update_parameters(self, new_params):
         """Update all Gaussians with new parameters"""
@@ -365,7 +362,8 @@ class GaussiansHandler:
         print(f"Number of clones: {num_clone}")
         num_split = self.split_cycle(max_grad, extent)
         print(f"Number of splits: {num_split}")
-        self.reset_densification_info()
+        self.mean_gradient_accum = torch.zeros((len(self.gaussians), 1), device="cuda")
+        self.counter = torch.zeros((len(self.gaussians), 1), device="cuda")
         num_prune = self.prune_cycle(min_opacity, max_screen_size, extent)
         print(f"Number of prunes: {num_prune}")
         torch.cuda.empty_cache()
