@@ -141,7 +141,7 @@ class GaussianTrainer:
         #if self.step and self.step % self.opt.aggressive_split_interval == 0:
             #self.renderer.gaussians_handler.agressive_splitting(self.opt.th1,self.opt.th2,self.opt.num_tiles,self.opt.split_factor)
         
-        if self.step % 100 == 0:
+        if self.step % 50 == 0:
             self.renderer.gaussians_handler.densification_cycle(max_grad=0.01,min_opacity=0.01)
 
         if self.step % 250 == 0:

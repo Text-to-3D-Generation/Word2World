@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-import BaseCamera
+from BaseCamera import BaseCamera  
 from misc_utils import get_projection_matrix  # External projection matrix generator
 
 class StaticCamera (BaseCamera):

@@ -219,6 +219,7 @@ class Renderer:
         for gaussian in self.gaussians_handler.gaussians:
             total_mean.append(gaussian.mean)
         total_mean = torch.stack(total_mean)
+        # total_mean = self.gaussians_handler.get_param_group_by_name("mean")
 
         screenspace_points = torch.zeros_like(
             total_mean,
@@ -269,6 +270,13 @@ class Renderer:
         total_opacity = torch.stack(total_opacity)
         total_svec = torch.stack(total_svec)
         total_quaternion = torch.stack(total_quaternion)
+
+        # total_mean = self.gaussians_handler.get_param_group_by_name("mean")
+        # total_sh_coefficients_dc = self.gaussians_handler.get_param_group_by_name("sh_coefficients_dc")
+        # total_sh_coefficients_ac = self.gaussians_handler.get_param_group_by_name("sh_coefficients_ac")
+        # total_opacity = self.gaussians_handler.get_param_group_by_name("opacity")
+        # total_svec = self.gaussians_handler.get_param_group_by_name("svec")
+        # total_quaternion = self.gaussians_handler.get_param_group_by_name("quaternion")
 
 
         means3D   = total_mean

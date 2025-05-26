@@ -8,17 +8,21 @@ class PointCloud:
     points: torch.Tensor  #(N, 3)
     sh_coefficients: torch.Tensor  #(N, 3)
 
+    def __init__(self, points, sh_coefficients):
+        self.points = points
+        self.sh_coefficients = sh_coefficients
+
 
 class GaussianPrimitive:
     """It represent one gaussian in space"""
     def __init__(self, mean,opacity,sh_coefficients_dc,sh_coefficients_ac,svec,quaternion):
 
-        self.mean = nn.Parameter(mean.requires_grad_(True))
-        self.opacity = nn.Parameter(opacity.requires_grad_(True))
-        self.sh_coefficients_dc = nn.Parameter(sh_coefficients_dc.requires_grad_(True))
-        self.sh_coefficients_ac = nn.Parameter(sh_coefficients_ac.requires_grad_(True))
-        self.svec = nn.Parameter(svec.requires_grad_(True))
-        self.quaternion = nn.Parameter(quaternion.requires_grad_(True))
+        self.mean = mean
+        self.opacity = opacity
+        self.sh_coefficients_dc = sh_coefficients_dc
+        self.sh_coefficients_ac = sh_coefficients_ac
+        self.svec = svec
+        self.quaternion = quaternion
 
     
 
