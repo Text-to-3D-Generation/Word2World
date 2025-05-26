@@ -42,7 +42,7 @@ class GaussiansHandler:
             if group.get("name") == name:
                 return group["params"][0]
     
-    # ============= Training Methods =============
+    # ============= Training Methods =================================================
     def optimizer_setup(self):
         """Configure training parameters and optimizer"""
         

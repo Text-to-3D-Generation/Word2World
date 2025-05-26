@@ -20,8 +20,6 @@ class GaussianTrainer:
         point_cloud = generate_random_point_cloud(500)
         self.renderer = Renderer(pcd = point_cloud)
         self.cam = DynamicCamera(800, 800, radius=3.8)
-        
-        # Training state
         self.training = False
         self.optimizer = None
 
@@ -52,20 +50,15 @@ class GaussianTrainer:
         for view_idx in range(4):
             #azimuth offset (0°, 90°, 180°, 270°)
             azimuth = horizontal_view + 90 * view_idx
-            
             # Generate pose and camera
             elevation = np.deg2rad(vertical_view)
             azimuth = np.deg2rad(azimuth)
-    
             r = 3.8
             x = r* np.cos(elevation) * np.sin(azimuth)  # x = r*cos(θ)*sin(φ)
             y = -r * np.sin(elevation)                   # y = -r*sin(θ)
             z = r * np.cos(elevation) * np.cos(azimuth)  # z = r*cos(θ)*cos(φ)
-    
             target = np.zeros(3, dtype=np.float32)
-    
             campos = np.array([x, y, z]) + target  # offset by target position
-    
             pose = np.eye(4, dtype=np.float32)  # initialize 4x4 identity
             forward = safe_normalize(campos - target)
             up = np.array([0, 1, 0], dtype=np.float32)
@@ -76,72 +69,41 @@ class GaussianTrainer:
             pose[:3, 3] = campos
             view = pose
             views.append(view)
-            
             if not isinstance(view, torch.Tensor):
                 c2w = torch.tensor(view, dtype=torch.float32)
-
             c2w = c2w.to(torch.float32).cuda()
-
             IW = resolution
             IH = resolution
             FY = self.cam.fovy
             FX = self.cam.fovx
             ZN = self.cam.near
             ZF = self.cam.far
-
             # Compute inverse: world-to-camera
             W_to_C = torch.linalg.inv(c2w)
-
             # Apply NeRF coordinate system adjustment
             W_to_C[1:3, :3] *= -1  # Flip Y and Z rotation axes
             W_to_C[:3, 3] *= -1    # Flip translation
-
             # Store transform in PyTorch (transpose for matmul order)
             W_V_transform = W_to_C.transpose(0, 1).contiguous()
-
             # Projection matrix from external utility (assumed to be torch-compatible)
-            Proj_Matrix = (
-                get_projection_matrix(
-                    z_near=ZN,
-                    z_far=ZF,
-                    fov_x=FX,
-                    fov_y=FY
-                )
-                .transpose(0, 1)
-                .contiguous()
+            Proj_Matrix = (get_projection_matrix(z_near=ZN,z_far=ZF,fov_x=FX,fov_y=FY)
+                .transpose(0, 1).contiguous()
                 .cuda()
             )
-
             # Full projection transform: MVP matrix
             FULL_PROJ = W_V_transform @ Proj_Matrix
-
             # Camera center in world space
             CC = -c2w[:3, 3]
-            
             # Render and store image
-            render_out = self.renderer.render(
-                    FX, FY, 
-                    W_V_transform, FULL_PROJ,
-                    CC, 
-                    IW, IH,
-                bg_color=torch.tensor([1, 1, 1], dtype=torch.float32, device=self.device))
+            render_out = self.renderer.render(FX, FY, W_V_transform, FULL_PROJ,CC, IW, IH,bg_color=torch.tensor([1, 1, 1], dtype=torch.float32, device=self.device))
             images.append(render_out["image"].unsqueeze(0))
-            
-            # Store first view's full output
             if view_idx == 0:
                 out = render_out
-
-        # Stack and process outputs
         stacked_images = torch.cat(images, dim=0)        
-        resized_images = torch.nn.functional.interpolate(
-            stacked_images,
-            size=(256, 256),
-            mode='bilinear',
-            align_corners=False
-        )
+        resized_images = torch.nn.functional.interpolate(stacked_images,size=(256, 256),mode='bilinear',
+            align_corners=False)
         stacked_views = torch.from_numpy(np.stack(views)).to(self.device)
         return out, stacked_images, stacked_views, resized_images
-
 
     def _compute_guidance_loss(self, images: torch.Tensor, poses: torch.Tensor, step_ratio: float) -> torch.Tensor:
         """Compute loss using guidance model"""
@@ -149,25 +111,23 @@ class GaussianTrainer:
         gl.backward()
         return gl
 
-
     def _should_densify(self) -> bool:
         """Check if we should perform densification at current step"""
         return (self.step > 0 and 
                 self.step <= 1000)
-
+    
     def train_step(self) -> float:
         """Execute one training step, return elapsed time in ms"""
         self.step += 1
         starter = torch.cuda.Event(enable_timing=True)
         ender = torch.cuda.Event(enable_timing=True)
         starter.record()
-        self.renderer.gaussians_handler.update_mean_lr(self.step)
         render_resolution = self._get_resolution_for_step(min(1, self.step / 500))
         out, images, poses, _ = self._render_training_views(render_resolution)
+        self.renderer.gaussians_handler.update_mean_lr(self.step)
         gl = self._compute_guidance_loss(images, poses, min(1, self.step / 500))
         self.optimizer.step()
-        if self._should_densify():
-            self._handle_densification(out)
+        if self._should_densify(): self._handle_densification(out)
         ender.record()
         self.optimizer.zero_grad()
         torch.cuda.synchronize()
@@ -187,7 +147,6 @@ class GaussianTrainer:
 
         # if self.step % 250 == 0:
         #     self.renderer.gaussians_handler.opacity_decay()
-
 
     def save_model(self, mode=1, texture_size=1024, user_save=False, model_name="", save_dir=""):
         """Save model"""
