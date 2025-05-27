@@ -4,19 +4,9 @@ from torch.optim import Optimizer
 
 class OptimizerManager:
     def __init__(self, optimizer):
-        self.optimizer = optimizer  # Placeholder for the optimizer instance
+        self.optimizer = optimizer  
 
     def _modify_optimizer_params(self, modify_fn):
-        """
-        Generalized function to modify optimizer parameters (pruning or densifying).
-
-        Args:
-            modify_fn (callable): Function that takes (param_tensor, stored_state, group_name)
-            and modifies them accordingly.
-
-        Returns:
-            dict: A dictionary of updated parameters.
-        """
         updated_params = {}
         for group in self.optimizer.param_groups:
             param_tensor = group["params"][0]
@@ -32,9 +22,6 @@ class OptimizerManager:
         return updated_params
 
     def prune_optimizer(self, mask):
-        """
-        Prune optimizer parameters based on a boolean mask indicating which parameters to KEEP.
-        """
         def prune_fn(param_tensor, stored_state, group):
             new_param_tensor = nn.Parameter(param_tensor[mask].requires_grad_(True))
             if stored_state:
@@ -45,9 +32,6 @@ class OptimizerManager:
         return self._modify_optimizer_params(prune_fn)
 
     def densify_on_optimizer(self, new_params_dict):
-        """
-        Extend optimizer parameters by concatenating new tensors.
-        """
         def densify_fn(param_tensor, stored_state, group):
             extension_tensor = new_params_dict[group["name"]]
             print(group["name"])
