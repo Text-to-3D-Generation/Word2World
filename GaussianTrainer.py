@@ -7,7 +7,7 @@ from tqdm import tqdm
 from typing import Optional, Dict, Any
 from Renderer import Renderer
 from DynamicCamera import DynamicCamera, rotate_camera,safe_normalize
-from guidance.mvdream_utils import MVDream
+from guidance.mvdream_interface import MVDream
 from TrainerIO import TrainerIO
 from misc_utils import get_projection_matrix
 from primitives import generate_random_point_cloud
@@ -102,7 +102,7 @@ class GaussianTrainer:
     def should_densify(self) -> bool:
         return (self.step > 0 and self.step <= 1000)
     
-    def train_step(self) -> float:
+    def optimizaiton_iteration(self) -> float:
         self.step += 1
         starter = torch.cuda.Event(enable_timing=True)
         ender = torch.cuda.Event(enable_timing=True)

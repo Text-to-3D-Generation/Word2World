@@ -136,9 +136,29 @@ class TrainerIO:
         # ---------- 1)  Render RGB at the requested resolution ----------
         if hasattr(renderer, "set_resolution"):
             renderer.set_resolution(render_resolution, render_resolution)
-
-        pose = rotate_camera(ver, hor, cam.radius)
-
+        r = cam.radius
+        x = r* np.cos(ver) * np.sin(hor)  # x = r*cos(θ)*sin(φ)
+        y = -r * np.sin(ver)                   # y = -r*sin(θ)
+        z = r * np.cos(ver) * np.cos(hor)  # z = r*cos(θ)*cos(φ)
+        target = np.zeros(3, dtype=np.float32)
+        campos = np.array([x, y, z]) + target  # offset by target position
+        pose = np.eye(4, dtype=np.float32)  # initialize 4x4 identity
+        forward = safe_normalize(campos - target)
+        up = np.array([0, 1, 0], dtype=np.float32)
+        right = safe_normalize(np.cross(up, forward))  # right-handed
+        up = np.cross(forward, right)  # recompute up
+        up = safe_normalize(up) #re-normalize
+        pose[:3, :3] = np.stack([right, up, forward], axis=1)  # set rotation part
+        pose[:3, 3] = campos
+        # cur_cam = StaticCamera(
+        #     pose,
+        #     render_resolution,           # width
+        #     render_resolution,           # height
+        #     cam.fovy,
+        #     cam.fovx,
+        #     cam.near,
+        #     cam.far,
+        # )
         if not isinstance(pose, torch.Tensor):
             c2w = torch.tensor(pose, dtype=torch.float32)
 

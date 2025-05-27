@@ -382,7 +382,7 @@ class GUITrainer:
             This function is called recursively using `after` to create a loop.
         """
         if self.trainer.training:
-            t, loss = self.trainer.train_step()
+            t, loss = self.trainer.optimizaiton_iteration()
 
             step_ratio = min(1, self.trainer.step / 500)
             print(f"Step: {self.trainer.step}, Loss: {loss:.4f}")
