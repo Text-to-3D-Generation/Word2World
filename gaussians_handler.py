@@ -21,8 +21,7 @@ from primitives import convert_pcd_to_gaussians, GaussianPrimitive
 
 
 class GaussiansHandler:
-    """3D Gaussian Splatting model composed of multiple GaussianPrimitive instances."""
-    
+
     def __init__(self,pcd):
         
         self.optimizer = None
@@ -42,50 +41,28 @@ class GaussiansHandler:
             if group.get("name") == name:
                 return group["params"][0]
     
-    # ============= Training Methods =============
+    # ============= Training Methods =================================================
     def optimizer_setup(self):
-        """Configure training parameters and optimizer"""
-        
         with open("optimizer_config.json", "r") as f:
             config = json.load(f)
 
-        param_stacks = {
-            "mean": torch.stack([g.mean for g in self.gaussians]),
-            "opacity": torch.stack([g.opacity for g in self.gaussians]),
-            "sh_coefficients_dc": torch.stack([g.sh_coefficients_dc for g in self.gaussians]),
-            "sh_coefficients_ac": torch.stack([g.sh_coefficients_ac for g in self.gaussians]),
-            "svec": torch.stack([g.svec for g in self.gaussians]),
-            "quaternion": torch.stack([g.quaternion for g in self.gaussians])
-        }
-
-        # Create parameter groups with stacked tensors
+        param_stacks = {"mean": torch.stack([g.mean for g in self.gaussians]),"opacity": torch.stack([g.opacity for g in self.gaussians]),"sh_coefficients_dc": torch.stack([g.sh_coefficients_dc for g in self.gaussians]),
+            "sh_coefficients_ac": torch.stack([g.sh_coefficients_ac for g in self.gaussians]),"svec": torch.stack([g.svec for g in self.gaussians]),
+            "quaternion": torch.stack([g.quaternion for g in self.gaussians])}
         param_groups = []
         for entry in config:
             param_name = entry["param"]
             if param_name in param_stacks:
-                # Create new Parameter from stacked tensor
                 stacked_param = nn.Parameter(param_stacks[param_name].requires_grad_(True))
-                param_groups.append({
-                    "params": [stacked_param],
-                    "lr": entry["lr"],
-                    "name": param_name
-                })
-
+                param_groups.append({"params": [stacked_param],"lr": entry["lr"],"name": param_name})
         self.optimizer = torch.optim.Adam(param_groups, lr=0.0, eps=1e-15)
         collected_params = {}
         for group in self.optimizer.param_groups:
             collected_params[group.get("name")] = group["params"][0]
-
         self.update_parameters(collected_params)
-        self.mean_scheduler_args = get_expon_lr_func(
-            lr_init=0.001 * 10,
-            lr_final=0.00002 * 10,
-            lr_delay_mult=0.02,
-            max_steps=300
-        )
         self.densifier = Densification(self.optimizer, device="cuda")
-
-        print("-------------Optimizer Params-------------")
+        self.mean_scheduler_args = get_expon_lr_func(lr_init=0.001 * 10,lr_final=0.00002 * 10,lr_delay_mult=0.02,max_steps=300)
+        print("-------------Optimizer Params----------")
         for group in self.optimizer.param_groups:
             print(f"{group['name']} shape: {group['params'][0].shape}")
         print("-------------------------------------------")
@@ -95,10 +72,8 @@ class GaussiansHandler:
         for param_group in self.optimizer.param_groups:
             if param_group["name"] == "mean":
                 param_group['lr'] = self.mean_scheduler_args(iteration)
-    
-    # ============= I/O Methods =============
+                
     def save_ply(self, path):
-     
         total_mean = []
         total_sh_coefficients_dc = []
         total_sh_coefficients_ac = []
@@ -128,36 +103,20 @@ class GaussiansHandler:
         # total_svec = self.get_param_group_by_name("svec")
         # total_quaternion = self.get_param_group_by_name("quaternion")
 
-        GaussianIO.save_ply(
-            path=path,
-            mean=total_mean,
-            sh_coefficients_dc=total_sh_coefficients_dc,
-            sh_coefficients_ac=total_sh_coefficients_ac,
-            opacities=total_opacity,
-            svec=total_svec,
-            quaternions=total_quaternion,
-        )
+        GaussianIO.save_ply(path=path,mean=total_mean,sh_coefficients_dc=total_sh_coefficients_dc,sh_coefficients_ac=total_sh_coefficients_ac,opacities=total_opacity,
+            svec=total_svec,quaternions=total_quaternion)
 
     def load_ply(self, path):
         data = GaussianIO.load_ply(path, self.max_sh_order)
-        
-        # Clear existing gaussians
         self.gaussians = []
-        
-        # Create new GaussianPrimitive objects from loaded data
         for i in range(data["mean"].shape[0]):
-            g = GaussianPrimitive(
-                mean=torch.tensor(data["mean"][i], dtype=torch.float, device="cuda"),
+            g = GaussianPrimitive(mean=torch.tensor(data["mean"][i], dtype=torch.float, device="cuda"),
                 opacity=torch.tensor(data["opacities"][i], dtype=torch.float, device="cuda").unsqueeze(0),
                 sh_coefficients_dc=torch.tensor(data["sh_coefficients_dc"][i], dtype=torch.float, device="cuda").unsqueeze(0),
                 sh_coefficients_ac=torch.tensor(data["sh_coefficients_ac"][i], dtype=torch.float, device="cuda").unsqueeze(0),
                 svec=torch.tensor(data["svec"][i], dtype=torch.float, device="cuda"),
-                quaternion=torch.tensor(data["quaternions"][i], dtype=torch.float, device="cuda")
-                
-            )
+                quaternion=torch.tensor(data["quaternions"][i], dtype=torch.float, device="cuda"))
             self.gaussians.append(g)
-        
-        self.current_sh_order = self.max_sh_order
         self.mean_gradient_accum = torch.zeros((len(self.gaussians), 1), device="cuda")
         self.counter = torch.zeros((len(self.gaussians), 1), device="cuda")
     
@@ -270,10 +229,12 @@ class GaussiansHandler:
         f = torch.from_numpy(faces.astype(np.int32)).contiguous().cuda()
         return Mesh(v=v, f=f, device="cuda")
     
-    # ============= Densification Methods =============
     def opacity_decay(self):
-        current_opacity = torch.sigmoid(self._opacity)
-        decreased_opacity = current_opacity * 0.4
+        total_opacity = []
+        for gaussian in self.gaussians:
+            total_opacity.append(gaussian.opacity)
+        total_opacity = torch.sigmoid(torch.stack(total_opacity))
+        decreased_opacity = total_opacity * 0.4
         decreased_opacity = torch.clamp(decreased_opacity, min=0.0, max=1.0)
         opacities_new = inverse_sigmoid(decreased_opacity)
         for i, g in enumerate(self.gaussians):
@@ -283,13 +244,7 @@ class GaussiansHandler:
         self.mean_gradient_accum[update_filter] += torch.norm(viewspace_point_tensor.grad[update_filter,:2], dim=-1, keepdim=True)
         self.counter[update_filter] += 1
 
-    def reset_densification_info(self):
-        self.mean_gradient_accum = torch.zeros((len(self.gaussians), 1), device="cuda")
-        self.counter = torch.zeros((len(self.gaussians), 1), device="cuda")
-    
     def update_parameters(self, new_params):
-        """Update all Gaussians with new parameters"""
-
         self.gaussians = []
         for i in range(new_params["mean"].shape[0]):
             g = GaussianPrimitive(mean=new_params["mean"][i],opacity=new_params["opacity"][i],
@@ -299,16 +254,14 @@ class GaussiansHandler:
             )
             self.gaussians.append(g)
     
-    def split_cycle(self, mean2d_thresh, scene_extent):
-
+    def split_cycle(self, mean2d_thresh):
         total_svec = []
         for gaussian in self.gaussians:
             total_svec.append(gaussian.svec)
         total_svec = torch.stack(total_svec)
         # total_svec = self.get_param_group_by_name("svec")
-        new_params, num_split, mask = self.densifier.split_shapes(self.mean_gradient_accum, self.counter,mean2d_thresh,0.01*scene_extent,torch.exp(total_svec),2,0.8)
+        new_params, num_split, mask = self.densifier.split_shapes(self.mean_gradient_accum, self.counter,mean2d_thresh,4,torch.exp(total_svec),2,0.8)
         self.update_parameters(new_params)
-        
         if num_split > 0:
             new_accum_grads = torch.zeros(2*num_split, device="cuda").unsqueeze(1)
             new_grads_cnt = torch.zeros(2*num_split, device="cuda").unsqueeze(1)
@@ -316,18 +269,16 @@ class GaussiansHandler:
             self.counter = self.counter[~mask]  
             self.mean_gradient_accum = torch.cat([self.mean_gradient_accum, new_accum_grads], dim=0)
             self.counter = torch.cat([self.counter, new_grads_cnt], dim=0)
-            
-        
         return num_split
     
-    def clone_cycle(self, mean2d_thresh, scene_extent):
+    def clone_cycle(self, mean2d_thresh):
 
         total_svec = []
         for gaussian in self.gaussians:
             total_svec.append(gaussian.svec)
         total_svec = torch.stack(total_svec)
         # total_svec = self.get_param_group_by_name("svec")
-        new_params, num_cloned = self.densifier.clone_shapes(self.mean_gradient_accum,self.counter,mean2d_thresh,0.01*scene_extent,torch.exp(total_svec)
+        new_params, num_cloned = self.densifier.clone_shapes(self.mean_gradient_accum,self.counter,mean2d_thresh,0.04,torch.exp(total_svec)
         )
         
         self.update_parameters(new_params)
@@ -339,7 +290,7 @@ class GaussiansHandler:
             
         return num_cloned
     
-    def prune_cycle(self, alpha_thresh, radii2d_thresh=1, extent=4):
+    def prune_cycle(self, alpha_thresh):
         total_opacity = []
         total_svec = []
         for gaussian in self.gaussians:
@@ -349,10 +300,7 @@ class GaussiansHandler:
         total_opacity = torch.stack(total_opacity)
         total_svec = torch.stack(total_svec)
 
-        # total_opacity = self.get_param_group_by_name("opacity")
-        # total_svec = self.get_param_group_by_name("svec")
-
-        new_params, num_prunes, mask = self.densifier.prune_shapes(torch.sigmoid(total_opacity),torch.exp(total_svec),radii2d_thresh,alpha_thresh,extent
+        new_params, num_prunes, mask = self.densifier.prune_shapes(torch.sigmoid(total_opacity),torch.exp(total_svec),1,alpha_thresh,4
         )
         self.update_parameters(new_params)
         if num_prunes > 0:
@@ -360,13 +308,14 @@ class GaussiansHandler:
             self.counter = self.counter[~mask]
         return num_prunes
     
-    def densification_cycle(self, max_grad, min_opacity, extent=4, max_screen_size=1):  
-        num_clone = self.clone_cycle(max_grad, extent)
+    def densification_cycle(self, max_grad, min_opacity):  
+        num_clone = self.clone_cycle(max_grad)
         print(f"Number of clones: {num_clone}")
-        num_split = self.split_cycle(max_grad, extent)
+        num_split = self.split_cycle(max_grad)
         print(f"Number of splits: {num_split}")
-        self.reset_densification_info()
-        num_prune = self.prune_cycle(min_opacity, max_screen_size, extent)
+        self.mean_gradient_accum = torch.zeros((len(self.gaussians), 1), device="cuda")
+        self.counter = torch.zeros((len(self.gaussians), 1), device="cuda")
+        num_prune = self.prune_cycle(min_opacity)
         print(f"Number of prunes: {num_prune}")
         torch.cuda.empty_cache()
 

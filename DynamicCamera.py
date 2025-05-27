@@ -1,6 +1,5 @@
 import torch
 from scipy.spatial.transform import Rotation as R
-from typing import Optional
 from utils_for_camera import *
 class DynamicCamera:
     def __init__(self, W, H, radius=2, fovy=49.1, near=0.01, far=100):

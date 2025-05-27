@@ -115,32 +115,12 @@ def _render_gaussians_inline(
                  radii, sh, geomBuf, binBuf, imgBuf, alpha) = ctx.saved_tensors
 
                 g_means2D, g_colors, g_opac, g_means3D, \
-                g_cov3D,  g_sh,     g_scales, g_rots = _C.rasterize_gaussians_backward(
-                    ctx.bg,
-                    means3D,
-                    radii,
-                    colors_precomp,
-                    scales,
-                    rotations,
-                    ctx.scale_mod,
-                    cov3Ds_precomp,
-                    ctx.vmat,
-                    ctx.pmat,
-                    ctx.fx,
-                    ctx.fy,
-                    g_color,
-                    g_depth,
-                    g_alpha,
-                    sh,
-                    ctx.sh_deg,
-                    ctx.camera_position,
-                    geomBuf,
-                    ctx.num_rend,
-                    binBuf,
-                    imgBuf,
+                g_cov3D,  g_sh,     g_scales, g_rots = _C.rasterize_gaussians_backward(ctx.bg,means3D,radii,
+                    colors_precomp,scales,rotations,ctx.scale_mod,cov3Ds_precomp,ctx.vmat,ctx.pmat,ctx.fx,ctx.fy,g_color,g_depth,
+                    g_alpha,sh,ctx.sh_deg,ctx.camera_position,geomBuf,ctx.num_rend,
+                    binBuf,imgBuf,
                     alpha,
-                    ctx.debug,
-                )
+                    ctx.debug,)
 
                 # Return gradients for every forward input (None for scalars)
                 return (
@@ -160,20 +140,9 @@ def _render_gaussians_inline(
     # ------------------------------------------------------------
     # 3.  Invoke the cached Function
     # ------------------------------------------------------------
-    return _render_gaussians_inline._Func.apply(
-        means3D, means2D, shs, colors_precomp, opacity,
-        scales, rotations, cov3D_precomp,
-        bg, scale_modifier, viewmatrix, projmatrix,
-        tanfovx, tanfovy, sh_degree, campos,
-        prefiltered, debug
-    )
-
-
-
-
-
-# ----------------------------------------------------------------------
-
+    return _render_gaussians_inline._Func.apply(means3D, means2D, shs, colors_precomp, opacity,scales, rotations, cov3D_precomp,bg, scale_modifier, viewmatrix, projmatrix,
+    tanfovx, tanfovy, sh_degree, campos,
+    prefiltered, debug)
 
 class Renderer:
     """Differentiable 3D Gaussian Splatting renderer
@@ -182,83 +151,38 @@ class Renderer:
     def __init__(self, pcd, white_background: bool = True):
         self.white_background = white_background
         self.gaussians_handler = GaussiansHandler(pcd)
-        self.bg_color = torch.tensor(
-            [1, 1, 1] if white_background else [0, 0, 0],
-            dtype=torch.float32,
-            device="cuda"
+        self.bg_color = torch.tensor([1, 1, 1] if white_background else [0, 0, 0],dtype=torch.float32,device="cuda"
         )
     
-    def render(
-        self,
-        FoVx,
-        FoVy,
-        world_view_transform,
-        full_proj_transform,
-        camera_center,
-        image_width,
-        image_height,
-        bg_color: Optional[torch.Tensor] = None,
-    ) -> Dict[str, torch.Tensor]:
+    def render(self,FoVx,FoVy,world_view_transform,full_proj_transform,camera_center,image_width,image_height,bg_color: Optional[torch.Tensor] = None,):
         scaling_modifier = 1
-        """
-        Render the Gaussian model from a given viewpoint.
-
-        Args:
-            viewpoint_camera: Camera parameters.
-            scaling_modifier: Scale adjustment factor (default=1.0).
-            bg_color: Optional background-color override.
-            override_color: Optional per-point color override.
-            compute_cov3D_python: Unused here (kept for API parity).
-            convert_SHs_python:  Unused here (kept for API parity).
-
-        Returns:
-            dict with 'image', 'depth', 'alpha', 'viewspace_points',
-            'visibility_filter', and 'radii'.
-        """
-        # ------------------------------------------------------------
-        # 1.  Differentiable screen-space placeholder (unchanged)
-        # ------------------------------------------------------------
         total_mean = []
         for gaussian in self.gaussians_handler.gaussians:
             total_mean.append(gaussian.mean)
         total_mean = torch.stack(total_mean)
         # total_mean = self.gaussians_handler.get_param_group_by_name("mean")
 
-        screenspace_points = torch.zeros_like(
-            total_mean,
-            dtype=total_mean.dtype,
-            requires_grad=True,
-            device="cuda",
+        screenspace_points = torch.zeros_like(total_mean,dtype=total_mean.dtype,requires_grad=True,
+        device="cuda",
         )
         # try:
         screenspace_points.retain_grad()
         # except RuntimeError:
         #     pass
-
-        # ------------------------------------------------------------
-        # 2.  Camera / render parameters (all scalars & matrices)
-        # ------------------------------------------------------------
         tanfovx = math.tan(FoVx * 0.5)
         tanfovy = math.tan(FoVy * 0.5)
-
         bg          = self.bg_color if bg_color is None else bg_color
         viewmatrix  = world_view_transform
         projmatrix  = full_proj_transform
         campos      = camera_center
         prefiltered = False
         debug       = False
-
-        # ------------------------------------------------------------
-        # 3.  Point-cloud attributes
-        # ------------------------------------------------------------
-
         total_mean = []
         total_sh_coefficients_dc = []
         total_sh_coefficients_ac = []
         total_opacity = []
         total_svec = []
         total_quaternion = []
-
         for gaussian in self.gaussians_handler.gaussians:
             total_mean.append(gaussian.mean)
             total_sh_coefficients_dc.append(gaussian.sh_coefficients_dc)
@@ -266,7 +190,6 @@ class Renderer:
             total_opacity.append(gaussian.opacity)
             total_svec.append(gaussian.svec)
             total_quaternion.append(gaussian.quaternion)
-
         total_mean = torch.stack(total_mean)
         total_sh_coefficients_dc = torch.stack(total_sh_coefficients_dc)
         total_sh_coefficients_ac = torch.stack(total_sh_coefficients_ac)
@@ -280,34 +203,20 @@ class Renderer:
         # total_opacity = self.gaussians_handler.get_param_group_by_name("opacity")
         # total_svec = self.gaussians_handler.get_param_group_by_name("svec")
         # total_quaternion = self.gaussians_handler.get_param_group_by_name("quaternion")
-
-
         means3D   = total_mean
         means2D   = screenspace_points
         opacity   = torch.sigmoid(total_opacity)
         scales    = torch.exp(total_svec)
         rotations = torch.nn.functional.normalize(total_quaternion)
-
         cov3D_precomp = None            # keeping the hook for future use
         shs             = torch.cat((total_sh_coefficients_dc, total_sh_coefficients_ac), dim=1)
         colors_precomp = None           # override_color path omitted for brevity
-
-        # ------------------------------------------------------------
-        # 4.  Rasterize
-        # ------------------------------------------------------------
         try:
-            rendered_image, radii, rendered_depth, rendered_alpha = _render_gaussians_inline(
-                means3D, means2D, shs, colors_precomp, opacity,
-                scales, rotations, cov3D_precomp,
-                bg, scaling_modifier,
-                viewmatrix, projmatrix,
-                tanfovx, tanfovy,
-                0, campos,
-                prefiltered, debug
-            )
+            rendered_image, radii,_,_= _render_gaussians_inline(means3D, means2D, shs, colors_precomp, opacity,scales, rotations, cov3D_precomp,bg, scaling_modifier,viewmatrix, projmatrix,
+                tanfovx, tanfovy,0, campos,prefiltered, debug)
             torch.cuda.synchronize() 
 
-    # -------- handle only CUDA illegal-access errors --------------------
+        # -------- handle only CUDA illegal-access errors --------------------
         except RuntimeError as e:
             if "illegal memory access" in str(e):
                 print("[WARN] CUDA illegal access in _render_gaussians_inline – "
@@ -320,23 +229,11 @@ class Renderer:
                 device = means3D.device
 
                 rendered_image = torch.zeros((H, W, 3), device=device, dtype=dtype)
-                rendered_depth = torch.full((H, W), float("inf"), device=device, dtype=dtype)
-                rendered_alpha = torch.zeros((H, W), device=device, dtype=dtype)
                 radii          = torch.zeros(means3D.shape[0], device=device, dtype=dtype)
 
             else:
                 # any *other* runtime error is still a real bug
                 raise
-
-        # ------------------------------------------------------------
-        # 5.  Package outputs
-        # ------------------------------------------------------------
-        
-        return {
-            "image":  rendered_image.clamp(0, 1),
-            "depth":  rendered_depth,
-            "alpha":  rendered_alpha,
-            "viewspace_points": screenspace_points,
-            "visibility_filter": radii > 0,
-            "radii":  radii,
-        }
+            
+        return {"image":  rendered_image.clamp(0, 1),"accum_grads": screenspace_points,
+            "avaialble_pts": radii > 0,}
