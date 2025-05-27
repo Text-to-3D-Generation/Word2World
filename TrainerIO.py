@@ -138,15 +138,7 @@ class TrainerIO:
             renderer.set_resolution(render_resolution, render_resolution)
 
         pose = rotate_camera(ver, hor, cam.radius)
-        # cur_cam = StaticCamera(
-        #     pose,
-        #     render_resolution,           # width
-        #     render_resolution,           # height
-        #     cam.fovy,
-        #     cam.fovx,
-        #     cam.near,
-        #     cam.far,
-        # )
+
         if not isinstance(pose, torch.Tensor):
             c2w = torch.tensor(pose, dtype=torch.float32)
 
