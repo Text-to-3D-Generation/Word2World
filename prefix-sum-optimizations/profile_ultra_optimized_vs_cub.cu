@@ -149,7 +149,7 @@ int main() {
         
         float cub_ms = 0.0f;
         cudaEventElapsedTime(&cub_ms, start, stop);
-        float cub_us = cub_ms * 1000.0f * 1.2; 
+        float cub_us = cub_ms * 1000.0f; 
 
         cudaEventDestroy(start);
         cudaEventDestroy(stop);
