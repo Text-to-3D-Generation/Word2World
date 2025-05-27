@@ -386,8 +386,8 @@ class GUITrainer:
 
             step_ratio = min(1, self.trainer.step / 500)
             print(f"Step: {self.trainer.step}, Loss: {loss:.4f}")
-            resolution = self.trainer._get_resolution_for_step(step_ratio)
-            _, _, _, images = self.trainer._render_training_views(resolution)
+            resolution = self.trainer.get_resolution_for_step(step_ratio)
+            _, _, _, images = self.trainer.render_training_views(resolution)
 
             for i, img in enumerate(images):
                 img = img.squeeze().cpu().detach().numpy().transpose(1, 2, 0)
@@ -563,12 +563,8 @@ class GUITrainer:
             self.show_loading("Exporting mesh & texture...")
 
             try:
-                self.trainer.save_model(
-                    mode="geo+tex",
-                    user_save=True,
-                    model_name=folder_info["folder_name"],
-                    save_dir=full_export_path
-                )
+                self.trainer.save_model(mode=3,user_save=True,
+                    model_name=folder_info["folder_name"],save_dir=full_export_path)
                 print(f"Model exported to: {full_export_path}")
             except Exception as e:
                 print("Export failed:", e)
