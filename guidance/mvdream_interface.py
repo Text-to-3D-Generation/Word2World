@@ -19,7 +19,7 @@ class MVDream(nn.Module):
             p.requires_grad_(False)
         self.num_train_timesteps = 1000
         self.min_step = int(self.num_train_timesteps*0.02)
-        self.max_step = int(self.num_train_timesteps*0.098)
+        self.max_step = int(self.num_train_timesteps*0.98)
         self.embeddings = {}
         self.scheduler = DDIMScheduler.from_pretrained("stabilityai/stable-diffusion-2-1-base", subfolder="scheduler", torch_dtype=self.dtype)
 
