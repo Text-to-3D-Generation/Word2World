@@ -5,12 +5,6 @@ from typing import List, Optional, Dict, Union
 from PointE import PointEModel
 from gaussians_handler import GaussiansHandler
 from diff_gaussian_rasterization import _C 
-
-
-
-# ----------------------------------------------------------------------
-#  CUDA bridge – pulled out of diff_gaussian_rasterization/__init__.py
-# ----------------------------------------------------------------------
 import torch
 from typing import Tuple
 
@@ -49,23 +43,13 @@ def _render_gaussians_inline(
     are passed explicitly (no SimpleNamespace needed).
     """
     scale_modifier = 1
-    # ------------------------------------------------------------
-    # 1.  Fill in any missing per-point attributes (unchanged)
-    # ------------------------------------------------------------
-    shs, colors_precomp, scales, rotations, cov3D_precomp = fill_missing_attributes(
-        means3D, shs, colors_precomp, scales, rotations, cov3D_precomp
-    )
+    shs, colors_precomp, scales, rotations, cov3D_precomp = fill_missing_attributes(means3D, shs, colors_precomp, scales, rotations, cov3D_precomp)
     focal_x = 800/(2*tanfovx)
     focal_y = 800/(2*tanfovy)
-
-    # ------------------------------------------------------------
-    # 2.  Lazily create (and cache) the autograd.Function
-    # ------------------------------------------------------------
     if not hasattr(_render_gaussians_inline, "_Func"):
 
         class _Func(torch.autograd.Function):
 
-            # ---------- forward ----------
             @staticmethod
             def forward(ctx,
                         means3D, means2D, sh, colors_precomp, opacities,
@@ -76,20 +60,18 @@ def _render_gaussians_inline(
 
                 num_rend, color, depth, alpha, \
                 radii, geomBuf, binBuf, imgBuf = _C.rasterize_gaussians(
-                    sh,            # 1
+                    sh,           # 1
                     focal_y,       # 2
                     scales,        # 3
                     means3D,       # 4
-                    projmatrix,    # 5
+                    projmatrix,   # 5
                     sh_degree,     # 6
                     opacities,     # 7
                     rotations,     # 8
-                    campos,        # 9
+                    campos,       # 9
                     viewmatrix,    # 10
                     focal_x        # 11
                 )
-
-                # ---- save context ----
                 ctx.num_rend  = num_rend
                 ctx.bg        = bg
                 ctx.scale_mod = scale_modifier
@@ -101,18 +83,14 @@ def _render_gaussians_inline(
                 ctx.camera_position    = campos
                 ctx.debug     = debug
 
-                ctx.save_for_backward(colors_precomp, means3D, scales, rotations,
-                                      cov3Ds_precomp, radii, sh,
-                                      geomBuf, binBuf, imgBuf, alpha)
+                ctx.save_for_backward(colors_precomp, means3D, scales, rotations,cov3Ds_precomp, radii, sh,
+                geomBuf, binBuf, imgBuf, alpha)
 
                 return color, radii, depth, alpha
-
-            # ---------- backward ----------
             @staticmethod
             def backward(ctx, g_color, g_radii, g_depth, g_alpha):
 
-                (colors_precomp, means3D, scales, rotations, cov3Ds_precomp,
-                 radii, sh, geomBuf, binBuf, imgBuf, alpha) = ctx.saved_tensors
+                (colors_precomp, means3D, scales, rotations, cov3Ds_precomp,radii, sh, geomBuf, binBuf, imgBuf, alpha) = ctx.saved_tensors
 
                 g_means2D, g_colors, g_opac, g_means3D, \
                 g_cov3D,  g_sh,     g_scales, g_rots = _C.rasterize_gaussians_backward(ctx.bg,means3D,radii,
@@ -121,17 +99,15 @@ def _render_gaussians_inline(
                     binBuf,imgBuf,
                     alpha,
                     ctx.debug,)
-
-                # Return gradients for every forward input (None for scalars)
                 return (
                     g_means3D,   # means3D
                     g_means2D,   # means2D
-                    g_sh,        # sh
-                    g_colors,    # colors_precomp
-                    g_opac,      # opacities
+                    g_sh,         # sh
+                    g_colors,     # colors_precomp
+                    g_opac,       # opacities
                     g_scales,    # scales
                     g_rots,      # rotations
-                    g_cov3D,     # cov3Ds_precomp
+                    g_cov3D,      # cov3Ds_precomp
                     None, None, None, None, None, None, None, None, None, None
                 )
 
@@ -215,8 +191,7 @@ class Renderer:
             rendered_image, radii,_,_= _render_gaussians_inline(means3D, means2D, shs, colors_precomp, opacity,scales, rotations, cov3D_precomp,bg, scaling_modifier,viewmatrix, projmatrix,
                 tanfovx, tanfovy,0, campos,prefiltered, debug)
             torch.cuda.synchronize() 
-
-        # -------- handle only CUDA illegal-access errors --------------------
+            #allowing app to continue during errors incuda
         except RuntimeError as e:
             if "illegal memory access" in str(e):
                 print("[WARN] CUDA illegal access in _render_gaussians_inline – "

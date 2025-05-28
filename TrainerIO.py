@@ -8,7 +8,6 @@ from plyfile import PlyData, PlyElement
 import zlib
 import torch.nn.functional as F
 import base64
-from DynamicCamera import rotate_camera
 import nvdiffrast.torch as dr
 from mesh import safe_normalize
 from grid_put import mipmap_linear_grid_put_2d

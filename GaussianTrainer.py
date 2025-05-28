@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from tqdm import tqdm
 from typing import Optional, Dict, Any
 from Renderer import Renderer
-from DynamicCamera import DynamicCamera, rotate_camera,safe_normalize
+from DynamicCamera import DynamicCamera,safe_normalize
 from guidance.mvdream_interface import MVDream
 from TrainerIO import TrainerIO
 from misc_utils import get_projection_matrix
