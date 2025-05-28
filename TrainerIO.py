@@ -9,8 +9,10 @@ import zlib
 import torch.nn.functional as F
 import base64
 import nvdiffrast.torch as dr
-from mesh import safe_normalize
-from grid_put import mipmap_linear_grid_put_2d
+from insert_in_grid import mipmap_bilinear_insert_2d
+
+def norm(x):
+    return x / torch.sqrt(torch.clamp(torch.sum(x * x, -1, keepdim=True), min=1e-20))
 
 class TrainerIO:
     """Handles all model input/output operations with versioning and compression support"""
@@ -142,11 +144,11 @@ class TrainerIO:
         target = np.zeros(3, dtype=np.float32)
         campos = np.array([x, y, z]) + target  # offset by target position
         pose = np.eye(4, dtype=np.float32)  # initialize 4x4 identity
-        forward = safe_normalize(campos - target)
+        forward = norm(campos - target)
         up = np.array([0, 1, 0], dtype=np.float32)
-        right = safe_normalize(np.cross(up, forward))  # right-handed
+        right = norm(np.cross(up, forward))  # right-handed
         up = np.cross(forward, right)  # recompute up
-        up = safe_normalize(up) #re-normalize
+        up = norm(up) #re-normalize
         pose[:3, :3] = np.stack([right, up, forward], axis=1)  # set rotation part
         pose[:3, 3] = campos
         # cur_cam = StaticCamera(
@@ -225,7 +227,7 @@ class TrainerIO:
         # ---------- 4)  Interpolate attrs & build visibility mask ----------
         uvs, _    = dr.interpolate(mesh.vt.unsqueeze(0), rast, mesh.ft)
         normal, _ = dr.interpolate(mesh.vn.unsqueeze(0).contiguous(), rast, mesh.fn)
-        normal    = safe_normalize(normal[0])
+        normal    = norm(normal[0])
 
         rot_normal = normal @ pose_t[:3, :3]
         viewcos    = rot_normal[..., [2]]
@@ -243,11 +245,11 @@ class TrainerIO:
         )
 
         # ---------- 6)  Blend into the global texture ----------
-        cur_albedo, cur_cnt = mipmap_linear_grid_put_2d(
+        cur_albedo, cur_cnt = mipmap_bilinear_insert_2d(
             h, w,
             valid_uvs[..., [1, 0]] * 2 - 1,   # UV → NDC
             valid_rgbs,
-            min_resolution=256,
+            min_res=256,
             return_count=True,
         )
 
