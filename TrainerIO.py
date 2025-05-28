@@ -10,7 +10,7 @@ import torch.nn.functional as F
 import base64
 import nvdiffrast.torch as dr
 from mesh import safe_normalize
-from grid_put import mipmap_linear_grid_put_2d
+from insert_in_grid import mipmap_bilinear_insert_2d
 
 class TrainerIO:
     """Handles all model input/output operations with versioning and compression support"""
@@ -243,11 +243,11 @@ class TrainerIO:
         )
 
         # ---------- 6)  Blend into the global texture ----------
-        cur_albedo, cur_cnt = mipmap_linear_grid_put_2d(
+        cur_albedo, cur_cnt = mipmap_bilinear_insert_2d(
             h, w,
             valid_uvs[..., [1, 0]] * 2 - 1,   # UV → NDC
             valid_rgbs,
-            min_resolution=256,
+            min_res=256,
             return_count=True,
         )
 
