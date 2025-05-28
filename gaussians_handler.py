@@ -10,7 +10,7 @@ from vtkmodules.vtkCommonCore import VTK_FLOAT
 from vtkmodules.util.numpy_support import numpy_to_vtk
 from pyvista import wrap
 from Densification import Densification
-from mesh import Mesh
+from TriangleMesh import TriangleMesh
 from utils_for_mesh import simplify_mesh_geometry, refine_mesh_topology
 from misc_utils import inverse_sigmoid, get_expon_lr_func, extract_symmetric, compute_3d_gaussian_coefficient, build_scaling_rotation_matrix
 import kiui
@@ -227,7 +227,7 @@ class GaussiansHandler:
 
         v = torch.from_numpy(verts.astype(np.float32)).contiguous().cuda()
         f = torch.from_numpy(faces.astype(np.int32)).contiguous().cuda()
-        return Mesh(v=v, f=f, device="cuda")
+        return TriangleMesh(vertices=v, faces=f, device="cuda")
     
     def opacity_decay(self):
         total_opacity = []
