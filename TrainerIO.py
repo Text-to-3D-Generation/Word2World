@@ -10,7 +10,22 @@ import torch.nn.functional as F
 import base64
 import nvdiffrast.torch as dr
 from insert_in_grid import mipmap_bilinear_insert_2d
+class NumpyEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.ndarray):
+            return {
+                '__ndarray__': True,
+                'data': obj.tolist(),
+                'dtype': str(obj.dtype),
+                'shape': obj.shape
+            }
+        return super().default(obj)
 
+
+def numpy_decoder(dct):
+    if '__ndarray__' in dct:
+        return np.array(dct['data'], dtype=dct['dtype']).reshape(dct['shape'])
+    return dct
 def norm(x):
     return x / torch.sqrt(torch.clamp(torch.sum(x * x, -1, keepdim=True), min=1e-20))
 
@@ -160,11 +175,9 @@ class TrainerIO:
         #     cam.near,
         #     cam.far,
         # )
-        if not isinstance(pose, torch.Tensor):
-            c2w = torch.tensor(pose, dtype=torch.float32)
 
+        c2w = torch.tensor(pose, dtype=torch.float32)
         c2w = c2w.to(torch.float32).cuda()
-
         IW = render_resolution
         IH = render_resolution
         FY = cam.fovy
@@ -183,10 +196,7 @@ class TrainerIO:
         W_V_transform = W_to_C.transpose(0, 1).contiguous()
 
         # Projection matrix from external utility (assumed to be torch-compatible)
-        Proj_Matrix = (
-            get_projection_matrix(
-                z_near=ZN,
-                z_far=ZF,
+        Proj_Matrix = (get_projection_matrix(z_near=ZN,z_far=ZF,
                 fov_x=FX,
                 fov_y=FY
             )
@@ -291,24 +301,3 @@ class TrainerIO:
         albedo_np[tuple(inpaint_coords.T)] = albedo_np[tuple(search_coords[indices[:, 0]].T)]
         
         return torch.from_numpy(albedo_np).to(albedo.device)
-
-
-
-class NumpyEncoder(json.JSONEncoder):
-    """Custom JSON encoder for numpy arrays"""
-    def default(self, obj):
-        if isinstance(obj, np.ndarray):
-            return {
-                '__ndarray__': True,
-                'data': obj.tolist(),
-                'dtype': str(obj.dtype),
-                'shape': obj.shape
-            }
-        return super().default(obj)
-
-
-def numpy_decoder(dct):
-    """Custom JSON decoder for numpy arrays"""
-    if '__ndarray__' in dct:
-        return np.array(dct['data'], dtype=dct['dtype']).reshape(dct['shape'])
-    return dct

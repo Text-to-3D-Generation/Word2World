@@ -75,16 +75,16 @@ class Densification:
         split_rotmat = torch.zeros((normalzided_split_quaternion.size(0), 3, 3), device='cuda')
         q_w, q_x, q_y, q_z = normalzided_split_quaternion[:, 0], normalzided_split_quaternion[:, 1], normalzided_split_quaternion[:, 2], normalzided_split_quaternion[:, 3]
         split_rotmat[:, 0, 0] = 1 - 2 * (q_y**2 + q_z**2)
-        split_rotmat[:, 1, 0] = 2 * (q_x*q_y + q_w*q_z)
+        split_rotmat[:, 1, 0] = 2 *(q_x*q_y + q_w*q_z)
         split_rotmat[:, 2, 0] = 2 * (q_x*q_z - q_w*q_y)
 
-        split_rotmat[:, 0, 1] = 2 * (q_x*q_y - q_w*q_z)
-        split_rotmat[:, 1, 1] = 1 - 2 * (q_x**2 + q_z**2)
+        split_rotmat[:, 0, 1] = 2 *(q_x*q_y - q_w*q_z)
+        split_rotmat[:, 1, 1] = 1 -2 * (q_x**2 + q_z**2)
         split_rotmat[:, 2, 1] = 2 * (q_y*q_z + q_w*q_x)
 
         split_rotmat[:, 0, 2] = 2 * (q_x*q_z + q_w*q_y)
         split_rotmat[:, 1, 2] = 2 * (q_y*q_z - q_w*q_x)
-        split_rotmat[:, 2, 2] = 1 - 2 * (q_x**2 + q_y**2)
+        split_rotmat[:, 2, 2] = 1 - 2 *(q_x**2 + q_y**2)
 
         stds = split_svec
         means = torch.zeros((stds.size(0), 3),device="cuda")
