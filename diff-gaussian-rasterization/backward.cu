@@ -1,14 +1,3 @@
-/*
- * Copyright (C) 2023, Inria
- * GRAPHDECO research group, https://team.inria.fr/graphdeco
- * All rights reserved.
- *
- * This software is free for non-commercial, research and evaluation use 
- * under the terms of the LICENSE.md file.
- *
- * For inquiries contact  george.drettakis@inria.fr
- */
-
 #define BLOCK_X 16
 #define BLOCK_Y 16
 #define NUM_CHANNELS 3
@@ -371,71 +360,95 @@ __global__ void computeCov2DCUDA(int P,
 	dL_dmeans[idx] = world_grad;
 }
 
-// Backward pass for the conversion of scale and rotation to a 
-// 3D covariance matrix for each Gaussian. 
-__device__ void computeCov3D(int idx, const glm::vec3 scale, float mod, const glm::vec4 rot, const float* dL_dcov3Ds, glm::vec3* dL_dscales, glm::vec4* dL_drots)
+__device__ void computeCovarianceDerivatives(
+    int element_index,
+    const glm::vec3 dimensions,
+    float scaling_factor,
+    const glm::vec4 rotation_quat,
+    const float* incoming_grads,
+    glm::vec3* dimension_derivs,
+    glm::vec4* rotation_derivs)
 {
-	// Recompute (intermediate) results for the 3D covariance computation.
-	glm::vec4 q = rot;// / glm::length(rot);
-	float r = q.x;
-	float x = q.y;
-	float y = q.z;
-	float z = q.w;
+    // Unpack quaternion components
+    const float qw = rotation_quat.x;
+    const float qx = rotation_quat.y;
+    const float qy = rotation_quat.z;
+    const float qz = rotation_quat.w;
 
-	glm::mat3 R = glm::mat3(
-		1.f - 2.f * (y * y + z * z), 2.f * (x * y - r * z), 2.f * (x * z + r * y),
-		2.f * (x * y + r * z), 1.f - 2.f * (x * x + z * z), 2.f * (y * z - r * x),
-		2.f * (x * z - r * y), 2.f * (y * z + r * x), 1.f - 2.f * (x * x + y * y)
-	);
+    // Compute auxiliary rotation terms
+    const float xx = qx * qx, yy = qy * qy, zz = qz * qz;
+    const float xy = qx * qy, xz = qx * qz, yz = qy * qz;
+    const float xw = qx * qw, yw = qy * qw, zw = qz * qw;
 
-	glm::mat3 S = glm::mat3(1.0f);
+    // Construct scaled dimensions
+    const glm::vec3 scaled_dims = scaling_factor * dimensions;
+    const float sx = scaled_dims.x, sy = scaled_dims.y, sz = scaled_dims.z;
 
-	glm::vec3 s = mod * scale;
-	S[0][0] = s.x;
-	S[1][1] = s.y;
-	S[2][2] = s.z;
+    // Compute transformation matrix elements
+    const float m11 = sx * (1.f - 2.f*(yy + zz));
+    const float m12 = sx * 2.f*(xy - zw);
+    const float m13 = sx * 2.f*(xz + yw);
+    
+    const float m21 = sy * 2.f*(xy + zw);
+    const float m22 = sy * (1.f - 2.f*(xx + zz));
+    const float m23 = sy * 2.f*(yz - xw);
+    
+    const float m31 = sz * 2.f*(xz - yw);
+    const float m32 = sz * 2.f*(yz + xw);
+    const float m33 = sz * (1.f - 2.f*(xx + yy));
 
-	glm::mat3 M = S * R;
+    // Extract covariance gradients
+    const float* grad = incoming_grads + 6 * element_index;
+    const float g11 = grad[0], g12 = grad[1], g13 = grad[2];
+    const float g22 = grad[3], g23 = grad[4], g33 = grad[5];
 
-	const float* dL_dcov3D = dL_dcov3Ds + 6 * idx;
+    // Compute intermediate products for gradient calculations
+    const float a11 = 2.f * (m11*g11 + m12*g12 + m13*g13);
+    const float a12 = 2.f * (m11*g12 + m12*g22 + m13*g23);
+    const float a13 = 2.f * (m11*g13 + m12*g23 + m13*g33);
+    
+    const float a21 = 2.f * (m21*g11 + m22*g12 + m23*g13);
+    const float a22 = 2.f * (m21*g12 + m22*g22 + m23*g23);
+    const float a23 = 2.f * (m21*g13 + m22*g23 + m23*g33);
+    
+    const float a31 = 2.f * (m31*g11 + m32*g12 + m33*g13);
+    const float a32 = 2.f * (m31*g12 + m32*g22 + m33*g23);
+    const float a33 = 2.f * (m31*g13 + m32*g23 + m33*g33);
 
-	glm::vec3 dunc(dL_dcov3D[0], dL_dcov3D[3], dL_dcov3D[5]);
-	glm::vec3 ounc = 0.5f * glm::vec3(dL_dcov3D[1], dL_dcov3D[2], dL_dcov3D[4]);
+    // Compute dimension derivatives
+    glm::vec3* dim_deriv = dimension_derivs + element_index;
+    dim_deriv->x = (1.f - 2.f*(yy + zz))*a11 + 2.f*(xy - zw)*a12 + 2.f*(xz + yw)*a13;
+    dim_deriv->y = 2.f*(xy + zw)*a21 + (1.f - 2.f*(xx + zz))*a22 + 2.f*(yz - xw)*a23;
+    dim_deriv->z = 2.f*(xz - yw)*a31 + 2.f*(yz + xw)*a32 + (1.f - 2.f*(xx + yy))*a33;
 
-	// Convert per-element covariance loss gradients to matrix form
-	glm::mat3 dL_dSigma = glm::mat3(
-		dL_dcov3D[0], 0.5f * dL_dcov3D[1], 0.5f * dL_dcov3D[2],
-		0.5f * dL_dcov3D[1], dL_dcov3D[3], 0.5f * dL_dcov3D[4],
-		0.5f * dL_dcov3D[2], 0.5f * dL_dcov3D[4], dL_dcov3D[5]
-	);
+    // Compute quaternion derivatives
+    const float dq0 = 4.f * (
+        -sz*(a31*yw - a32*xw + a33*xy) + 
+        sy*(a21*zw - a22*xz + a23*yy) + 
+        sx*(a12*zw - a13*yw - a11*yz)
+    );
 
-	// Compute loss gradient w.r.t. matrix M
-	// dSigma_dM = 2 * M
-	glm::mat3 dL_dM = 2.0f * M * dL_dSigma;
+    const float dq1 = 4.f * (
+        sz*(a31*zw + a32*zz - a33*yz) - 
+        sy*(a21*yw + a22*xy + a23*xx) + 
+        sx*(a12*yy + a13*zw + a11*xz)
+    );
 
-	glm::mat3 Rt = glm::transpose(R);
-	glm::mat3 dL_dMt = glm::transpose(dL_dM);
+    const float dq2 = 4.f * (
+        -sz*(a31*xx + a32*xw + a33*xz) + 
+        sy*(a21*zw + a22*yy + a23*yw) - 
+        sx*(a12*xw + a13*xx + a11*xy)
+    );
 
-	// Gradients of loss w.r.t. scale
-	glm::vec3* dL_dscale = dL_dscales + idx;
-	dL_dscale->x = glm::dot(Rt[0], dL_dMt[0]);
-	dL_dscale->y = glm::dot(Rt[1], dL_dMt[1]);
-	dL_dscale->z = glm::dot(Rt[2], dL_dMt[2]);
+    const float dq3 = 4.f * (
+        sz*(a31*xw - a32*xx + a33*xy) - 
+        sy*(a21*xz - a22*zw + a23*yz) + 
+        sx*(a12*yz - a13*zz + a11*yy)
+    );
 
-	dL_dMt[0] *= s.x;
-	dL_dMt[1] *= s.y;
-	dL_dMt[2] *= s.z;
-
-	// Gradients of loss w.r.t. normalized quaternion
-	glm::vec4 dL_dq;
-	dL_dq.x = 2 * z * (dL_dMt[0][1] - dL_dMt[1][0]) + 2 * y * (dL_dMt[2][0] - dL_dMt[0][2]) + 2 * x * (dL_dMt[1][2] - dL_dMt[2][1]);
-	dL_dq.y = 2 * y * (dL_dMt[1][0] + dL_dMt[0][1]) + 2 * z * (dL_dMt[2][0] + dL_dMt[0][2]) + 2 * r * (dL_dMt[1][2] - dL_dMt[2][1]) - 4 * x * (dL_dMt[2][2] + dL_dMt[1][1]);
-	dL_dq.z = 2 * x * (dL_dMt[1][0] + dL_dMt[0][1]) + 2 * r * (dL_dMt[2][0] - dL_dMt[0][2]) + 2 * z * (dL_dMt[1][2] + dL_dMt[2][1]) - 4 * y * (dL_dMt[2][2] + dL_dMt[0][0]);
-	dL_dq.w = 2 * r * (dL_dMt[0][1] - dL_dMt[1][0]) + 2 * x * (dL_dMt[2][0] + dL_dMt[0][2]) + 2 * y * (dL_dMt[1][2] + dL_dMt[2][1]) - 4 * z * (dL_dMt[1][1] + dL_dMt[0][0]);
-
-	// Gradients of loss w.r.t. unnormalized quaternion
-	float4* dL_drot = (float4*)(dL_drots + idx);
-	*dL_drot = float4{ dL_dq.x, dL_dq.y, dL_dq.z, dL_dq.w };//dnormvdv(float4{ rot.x, rot.y, rot.z, rot.w }, float4{ dL_dq.x, dL_dq.y, dL_dq.z, dL_dq.w });
+    // Store rotation derivatives
+    float4* rot_deriv = (float4*)(rotation_derivs + element_index);
+    *rot_deriv = float4{dq0, dq1, dq2, dq3};
 }
 
 // Backward pass of the preprocessing steps, except
@@ -506,7 +519,7 @@ __global__ void preprocessCUDA(
 
 	// Compute gradient updates due to computing covariance from scale/rotation
 	if (scales)
-		computeCov3D(idx, scales[idx], scale_modifier, rotations[idx], dL_dcov3D, dL_dscale, dL_drot);
+		computeCovarianceDerivatives(idx, scales[idx], scale_modifier, rotations[idx], dL_dcov3D, dL_dscale, dL_drot);
 }
 
 // Backward version of the rendering procedure.
