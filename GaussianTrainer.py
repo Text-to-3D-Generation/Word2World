@@ -38,11 +38,15 @@ class GaussianTrainer:
     def render_training_views(self, resolution: int) :
         vertical_view = np.random.randint(-30, 30)
         horizontal_view = np.random.randint(-180, 180)
-        azmiuths = [horizontal_view + 90 * view_idx for view_idx in range(4)]
+        azmiuth= horizontal_view
+        azmiuth1 = horizontal_view+90
+        azmiuth2 = horizontal_view+180
+        azmiuth3 = horizontal_view+270
+        azmiuths = [azmiuth, azmiuth1, azmiuth2, azmiuth3]
         images, views = [], []
         for azimuth in azmiuths:
             #azimuth offset (0°, 90°, 180°, 270°)
-            # Generate pose and camera
+            # generate pose and camera
             elevation_rad = np.deg2rad(vertical_view)
             azimuth_rad = np.deg2rad(azimuth)
             r = 3.8
@@ -61,8 +65,7 @@ class GaussianTrainer:
             pose[:3, 3] = campos
             view = pose
             views.append(view)
-            if not isinstance(view, torch.Tensor):
-                c2w = torch.tensor(view, dtype=torch.float32)
+            c2w = torch.tensor(view, dtype=torch.float32)
             c2w = c2w.to(torch.float32).cuda()
             IW = resolution
             IH = resolution
