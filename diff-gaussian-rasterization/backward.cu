@@ -15,127 +15,154 @@
 #include <cooperative_groups/reduce.h>
 namespace cg = cooperative_groups;
 
-// Backward pass for conversion of spherical harmonics to RGB for
-// each Gaussian.
 __device__ void computeColorFromSH(int idx, int deg, int max_coeffs, const glm::vec3* means, glm::vec3 campos, const float* shs, const bool* clamped, const glm::vec3* dL_dcolor, glm::vec3* dL_dmeans, glm::vec3* dL_dshs)
 {
-	// Compute intermediate values, as it is done during forward
-	glm::vec3 pos = means[idx];
-	glm::vec3 dir_orig = pos - campos;
-	glm::vec3 dir = dir_orig / glm::length(dir_orig);
-
-	glm::vec3* sh = ((glm::vec3*)shs) + idx * max_coeffs;
-
-	// Use PyTorch rule for clamping: if clamping was applied,
-	// gradient becomes 0.
-	glm::vec3 dL_dRGB = dL_dcolor[idx];
-	dL_dRGB.x *= clamped[3 * idx + 0] ? 0 : 1;
-	dL_dRGB.y *= clamped[3 * idx + 1] ? 0 : 1;
-	dL_dRGB.z *= clamped[3 * idx + 2] ? 0 : 1;
-
-	glm::vec3 dRGBdx(0, 0, 0);
-	glm::vec3 dRGBdy(0, 0, 0);
-	glm::vec3 dRGBdz(0, 0, 0);
-	float x = dir.x;
-	float y = dir.y;
-	float z = dir.z;
-
-	// Target location for this Gaussian to write SH gradients to
-	glm::vec3* dL_dsh = dL_dshs + idx * max_coeffs;
-
-	// No tricks here, just high school-level calculus.
-	float dRGBdsh0 = SH_C0;
-	dL_dsh[0] = dRGBdsh0 * dL_dRGB;
-	if (deg > 0)
-	{
-		float dRGBdsh1 = -SH_C1 * y;
-		float dRGBdsh2 = SH_C1 * z;
-		float dRGBdsh3 = -SH_C1 * x;
-		dL_dsh[1] = dRGBdsh1 * dL_dRGB;
-		dL_dsh[2] = dRGBdsh2 * dL_dRGB;
-		dL_dsh[3] = dRGBdsh3 * dL_dRGB;
-
-		dRGBdx = -SH_C1 * sh[3];
-		dRGBdy = -SH_C1 * sh[1];
-		dRGBdz = SH_C1 * sh[2];
-
-		if (deg > 1)
-		{
-			float xx = x * x, yy = y * y, zz = z * z;
-			float xy = x * y, yz = y * z, xz = x * z;
-
-			float dRGBdsh4 = SH_C2[0] * xy;
-			float dRGBdsh5 = SH_C2[1] * yz;
-			float dRGBdsh6 = SH_C2[2] * (2.f * zz - xx - yy);
-			float dRGBdsh7 = SH_C2[3] * xz;
-			float dRGBdsh8 = SH_C2[4] * (xx - yy);
-			dL_dsh[4] = dRGBdsh4 * dL_dRGB;
-			dL_dsh[5] = dRGBdsh5 * dL_dRGB;
-			dL_dsh[6] = dRGBdsh6 * dL_dRGB;
-			dL_dsh[7] = dRGBdsh7 * dL_dRGB;
-			dL_dsh[8] = dRGBdsh8 * dL_dRGB;
-
-			dRGBdx += SH_C2[0] * y * sh[4] + SH_C2[2] * 2.f * -x * sh[6] + SH_C2[3] * z * sh[7] + SH_C2[4] * 2.f * x * sh[8];
-			dRGBdy += SH_C2[0] * x * sh[4] + SH_C2[1] * z * sh[5] + SH_C2[2] * 2.f * -y * sh[6] + SH_C2[4] * 2.f * -y * sh[8];
-			dRGBdz += SH_C2[1] * y * sh[5] + SH_C2[2] * 2.f * 2.f * z * sh[6] + SH_C2[3] * x * sh[7];
-
-			if (deg > 2)
-			{
-				float dRGBdsh9 = SH_C3[0] * y * (3.f * xx - yy);
-				float dRGBdsh10 = SH_C3[1] * xy * z;
-				float dRGBdsh11 = SH_C3[2] * y * (4.f * zz - xx - yy);
-				float dRGBdsh12 = SH_C3[3] * z * (2.f * zz - 3.f * xx - 3.f * yy);
-				float dRGBdsh13 = SH_C3[4] * x * (4.f * zz - xx - yy);
-				float dRGBdsh14 = SH_C3[5] * z * (xx - yy);
-				float dRGBdsh15 = SH_C3[6] * x * (xx - 3.f * yy);
-				dL_dsh[9] = dRGBdsh9 * dL_dRGB;
-				dL_dsh[10] = dRGBdsh10 * dL_dRGB;
-				dL_dsh[11] = dRGBdsh11 * dL_dRGB;
-				dL_dsh[12] = dRGBdsh12 * dL_dRGB;
-				dL_dsh[13] = dRGBdsh13 * dL_dRGB;
-				dL_dsh[14] = dRGBdsh14 * dL_dRGB;
-				dL_dsh[15] = dRGBdsh15 * dL_dRGB;
-
-				dRGBdx += (
-					SH_C3[0] * sh[9] * 3.f * 2.f * xy +
-					SH_C3[1] * sh[10] * yz +
-					SH_C3[2] * sh[11] * -2.f * xy +
-					SH_C3[3] * sh[12] * -3.f * 2.f * xz +
-					SH_C3[4] * sh[13] * (-3.f * xx + 4.f * zz - yy) +
-					SH_C3[5] * sh[14] * 2.f * xz +
-					SH_C3[6] * sh[15] * 3.f * (xx - yy));
-
-				dRGBdy += (
-					SH_C3[0] * sh[9] * 3.f * (xx - yy) +
-					SH_C3[1] * sh[10] * xz +
-					SH_C3[2] * sh[11] * (-3.f * yy + 4.f * zz - xx) +
-					SH_C3[3] * sh[12] * -3.f * 2.f * yz +
-					SH_C3[4] * sh[13] * -2.f * xy +
-					SH_C3[5] * sh[14] * -2.f * yz +
-					SH_C3[6] * sh[15] * -3.f * 2.f * xy);
-
-				dRGBdz += (
-					SH_C3[1] * sh[10] * xy +
-					SH_C3[2] * sh[11] * 4.f * 2.f * yz +
-					SH_C3[3] * sh[12] * 3.f * (2.f * zz - xx - yy) +
-					SH_C3[4] * sh[13] * 4.f * 2.f * xz +
-					SH_C3[5] * sh[14] * (xx - yy));
-			}
-		}
+	glm::vec3 gaussian_center = means[idx];
+	float offset_x = gaussian_center.x - campos.x;
+	float offset_y = gaussian_center.y - campos.y;
+	float offset_z = gaussian_center.z - campos.z;
+	
+	glm::vec3 raw_direction(offset_x, offset_y, offset_z);
+	
+	float mag_squared = offset_x * offset_x + offset_y * offset_y + offset_z * offset_z;
+	float mag = sqrtf(mag_squared + 1e-10f);
+	float inv_mag = 1.0f / mag;
+	
+	float dir_x = offset_x * inv_mag;
+	float dir_y = offset_y * inv_mag;
+	float dir_z = offset_z * inv_mag;
+	
+	float x2 = dir_x * dir_x;
+	float y2 = dir_y * dir_y;
+	float z2 = dir_z * dir_z;
+	float xy = dir_x * dir_y;
+	float xz = dir_x * dir_z;
+	float yz = dir_y * dir_z;
+	float x2_minus_y2 = x2 - y2;
+	float three_x2 = 3.0f * x2;
+	float three_y2 = 3.0f * y2;
+	float four_z2 = 4.0f * z2;
+	float two_z2 = 2.0f * z2;
+	
+	glm::vec3 clamp_factors(
+		clamped[3 * idx + 0] ? 0.0f : 1.0f,
+		clamped[3 * idx + 1] ? 0.0f : 1.0f,
+		clamped[3 * idx + 2] ? 0.0f : 1.0f
+	);
+	
+	glm::vec3 clamped_dL_dRGB = dL_dcolor[idx] * clamp_factors;
+	
+	glm::vec3* sh_data = ((glm::vec3*)shs) + idx * max_coeffs;
+	glm::vec3* gradient_sh = dL_dshs + idx * max_coeffs;
+	
+	float basis_functions[16];
+	basis_functions[0] = SH_C0;
+	basis_functions[1] = -SH_C1 * dir_y;
+	basis_functions[2] = SH_C1 * dir_z;
+	basis_functions[3] = -SH_C1 * dir_x;
+	basis_functions[4] = SH_C2[0] * xy;
+	basis_functions[5] = SH_C2[1] * yz;
+	basis_functions[6] = SH_C2[2] * (two_z2 - x2 - y2);
+	basis_functions[7] = SH_C2[3] * xz;
+	basis_functions[8] = SH_C2[4] * x2_minus_y2;
+	basis_functions[9] = SH_C3[0] * dir_y * (three_x2 - y2);
+	basis_functions[10] = SH_C3[1] * xy * dir_z;
+	basis_functions[11] = SH_C3[2] * dir_y * (four_z2 - x2 - y2);
+	basis_functions[12] = SH_C3[3] * dir_z * (two_z2 - three_x2 - three_y2);
+	basis_functions[13] = SH_C3[4] * dir_x * (four_z2 - x2 - y2);
+	basis_functions[14] = SH_C3[5] * dir_z * x2_minus_y2;
+	basis_functions[15] = SH_C3[6] * dir_x * (x2 - three_y2);
+	
+	for (int i = 0; i < 16; ++i) {
+		gradient_sh[i] = basis_functions[i] * clamped_dL_dRGB;
 	}
-
-	// The view direction is an input to the computation. View direction
-	// is influenced by the Gaussian's mean, so SHs gradients
-	// must propagate back into 3D position.
-	glm::vec3 dL_ddir(glm::dot(dRGBdx, dL_dRGB), glm::dot(dRGBdy, dL_dRGB), glm::dot(dRGBdz, dL_dRGB));
-
-	// Account for normalization of direction
-	float3 dL_dmean = dnormvdv(float3{ dir_orig.x, dir_orig.y, dir_orig.z }, float3{ dL_ddir.x, dL_ddir.y, dL_ddir.z });
-
-	// Gradients of loss w.r.t. Gaussian means, but only the portion 
-	// that is caused because the mean affects the view-dependent color.
-	// Additional mean gradient is accumulated in below methods.
-	dL_dmeans[idx] += glm::vec3(dL_dmean.x, dL_dmean.y, dL_dmean.z);
+	
+	glm::vec3 accumulated_gradient(0.0f, 0.0f, 0.0f);
+	
+	accumulated_gradient.x -= SH_C1 * glm::dot(sh_data[3], clamped_dL_dRGB);
+	accumulated_gradient.y -= SH_C1 * glm::dot(sh_data[1], clamped_dL_dRGB);
+	accumulated_gradient.z += SH_C1 * glm::dot(sh_data[2], clamped_dL_dRGB);
+	
+	glm::vec3 deg2_contrib_x(
+		SH_C2[0] * dir_y * sh_data[4] + 
+		SH_C2[2] * (-2.0f * dir_x) * sh_data[6] + 
+		SH_C2[3] * dir_z * sh_data[7] + 
+		SH_C2[4] * (2.0f * dir_x) * sh_data[8]
+	);
+	
+	glm::vec3 deg2_contrib_y(
+		SH_C2[0] * dir_x * sh_data[4] + 
+		SH_C2[1] * dir_z * sh_data[5] + 
+		SH_C2[2] * (-2.0f * dir_y) * sh_data[6] + 
+		SH_C2[4] * (-2.0f * dir_y) * sh_data[8]
+	);
+	
+	glm::vec3 deg2_contrib_z(
+		SH_C2[1] * dir_y * sh_data[5] + 
+		SH_C2[2] * (4.0f * dir_z) * sh_data[6] + 
+		SH_C2[3] * dir_x * sh_data[7]
+	);
+	
+	accumulated_gradient.x += glm::dot(deg2_contrib_x, clamped_dL_dRGB);
+	accumulated_gradient.y += glm::dot(deg2_contrib_y, clamped_dL_dRGB);
+	accumulated_gradient.z += glm::dot(deg2_contrib_z, clamped_dL_dRGB);
+	
+	float deg3_factors_x[7] = {
+		SH_C3[0] * 6.0f * xy,
+		SH_C3[1] * yz,
+		SH_C3[2] * (-2.0f * xy),
+		SH_C3[3] * (-6.0f * xz),
+		SH_C3[4] * (four_z2 - 3.0f * x2 - y2),
+		SH_C3[5] * 2.0f * xz,
+		SH_C3[6] * 3.0f * x2_minus_y2
+	};
+	
+	float deg3_factors_y[7] = {
+		SH_C3[0] * 3.0f * (x2 - y2),
+		SH_C3[1] * xz,
+		SH_C3[2] * (four_z2 - 3.0f * y2 - x2),
+		SH_C3[3] * (-6.0f * yz),
+		SH_C3[4] * (-2.0f * xy),
+		SH_C3[5] * (-2.0f * yz),
+		SH_C3[6] * (-6.0f * xy)
+	};
+	
+	float deg3_factors_z[7] = {
+		0.0f,
+		SH_C3[1] * xy,
+		SH_C3[2] * 8.0f * yz,
+		SH_C3[3] * 3.0f * (two_z2 - x2 - y2),
+		SH_C3[4] * 8.0f * xz,
+		SH_C3[5] * x2_minus_y2,
+		0.0f
+	};
+	
+	glm::vec3 deg3_x(0.0f), deg3_y(0.0f), deg3_z(0.0f);
+	for (int i = 0; i < 7; ++i) {
+		deg3_x += deg3_factors_x[i] * sh_data[9 + i];
+		deg3_y += deg3_factors_y[i] * sh_data[9 + i];
+		deg3_z += deg3_factors_z[i] * sh_data[9 + i];
+	}
+	
+	accumulated_gradient.x += glm::dot(deg3_x, clamped_dL_dRGB);
+	accumulated_gradient.y += glm::dot(deg3_y, clamped_dL_dRGB);
+	accumulated_gradient.z += glm::dot(deg3_z, clamped_dL_dRGB);
+	
+	float inv_mag_cubed = inv_mag * inv_mag * inv_mag;
+	
+	glm::mat3 outer_prod(
+		raw_direction.x * raw_direction.x, raw_direction.x * raw_direction.y, raw_direction.x * raw_direction.z,
+		raw_direction.y * raw_direction.x, raw_direction.y * raw_direction.y, raw_direction.y * raw_direction.z,
+		raw_direction.z * raw_direction.x, raw_direction.z * raw_direction.y, raw_direction.z * raw_direction.z
+	);
+	
+	glm::mat3 scaled_I = glm::mat3(mag_squared);
+	
+	glm::mat3 jacobian = (scaled_I - outer_prod) * inv_mag_cubed;
+	
+	glm::vec3 final_mean_gradient = jacobian * accumulated_gradient;
+	
+	dL_dmeans[idx] += final_mean_gradient;
 }
 
 // Backward version of INVERSE 2D covariance matrix computation
