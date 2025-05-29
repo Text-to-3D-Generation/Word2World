@@ -14,12 +14,12 @@ class GaussianTrainer:
         self.device = torch.device("cuda")
         point_cloud = generate_random_point_cloud(500)
         self.renderer = Renderer(pcd = point_cloud)
-        self.cam = DynamicCamera(800, 800, radius=3.8)
         self.training = False
         self.optimizer = None
         
     def pre_traininig(self):
         self.renderer.gaussians_handler.optimizer_setup()
+        self.cam = DynamicCamera(800, 800, radius=3.8)
         self.optimizer = self.renderer.gaussians_handler.optimizer
         self.step = 0
         if not hasattr(self, 'mvdream'):
@@ -82,7 +82,7 @@ class GaussianTrainer:
             FULL_PROJ = W_V_transform @ Proj_Matrix
             CC = -c2w[:3, 3]
 
-            render_out = self.renderer.render(FX, FY, W_V_transform, FULL_PROJ,CC, IW, IH,bg_color=torch.tensor([1, 1, 1], dtype=torch.float32, device=self.device))
+            render_out = self.renderer.render(FX, FY, W_V_transform, FULL_PROJ,CC, IW, IH)
             images.append(render_out["image"].unsqueeze(0))
 
             if azimuth == azmiuths[0]: 

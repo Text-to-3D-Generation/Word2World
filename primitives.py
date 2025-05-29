@@ -68,16 +68,15 @@ def convert_pcd_to_gaussians(pcd):
     quaternions[:, 0] = 1.0
     opacities = inverse_sigmoid(0.1 * torch.ones((N, 1), device="cuda"))
     sh_order = 3
-    feature_dim = (sh_order + 1) ** 2
-    features = torch.zeros((N, 3, feature_dim), device="cuda")
-    features[:, :, 0] = colors  # fill DC term (band 0)
-    features[:, :, 1:] = 0.0  # AC components zero
+    sh_tot = torch.zeros((N, 3, (sh_order + 1) ** 2), device="cuda")
+    sh_tot[:, :, 0] = colors  # fill DC term (band 0)
+    sh_tot[:, :, 1:] = 0.0  # AC components zero
     gaussians = []
     for i in range(N):
         g = GaussianPrimitive(
             mean=points[i],
-            sh_coefficients_dc=features[i, :, 0:1].transpose(0, 1).contiguous(),
-            sh_coefficients_ac=features[i, :, 1:].transpose(0, 1).contiguous(),
+            sh_coefficients_dc=sh_tot[i, :, 0:1].transpose(0, 1).contiguous(),
+            sh_coefficients_ac=sh_tot[i, :, 1:].transpose(0, 1).contiguous(),
             svec=svec[i],
             quaternion=quaternions[i],
             opacity=opacities[i],

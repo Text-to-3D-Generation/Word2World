@@ -45,7 +45,7 @@ class GaussianIO:
         PlyData([vertex_element]).write(path)
 
     @staticmethod
-    def load_ply(path: str, max_sh_order: int) -> dict:
+    def load_ply(path):
         ply_data = PlyData.read(path)
         vertex_data = ply_data['vertex']
         positions = np.column_stack((vertex_data['x'],vertex_data['y'],vertex_data['z']))

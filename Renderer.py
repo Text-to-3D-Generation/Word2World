@@ -124,35 +124,28 @@ class Renderer:
     """Differentiable 3D Gaussian Splatting renderer
     """
     
-    def __init__(self, pcd, white_background: bool = True):
-        self.white_background = white_background
+    def __init__(self, pcd):
         self.gaussians_handler = GaussiansHandler(pcd)
-        self.bg_color = torch.tensor([1, 1, 1] if white_background else [0, 0, 0],dtype=torch.float32,device="cuda"
-        )
     
-    def render(self,FoVx,FoVy,world_view_transform,full_proj_transform,camera_center,image_width,image_height,bg_color: Optional[torch.Tensor] = None,):
-        scaling_modifier = 1
+    def render(self,FoVx,FoVy,world_view_transform,full_proj_transform,camera_center,image_width,image_height):
         total_mean = []
         for gaussian in self.gaussians_handler.gaussians:
             total_mean.append(gaussian.mean)
         total_mean = torch.stack(total_mean)
         # total_mean = self.gaussians_handler.get_param_group_by_name("mean")
 
-        screenspace_points = torch.zeros_like(total_mean,dtype=total_mean.dtype,requires_grad=True,
-        device="cuda",
+        accum_grads = torch.zeros_like(total_mean,dtype=total_mean.dtype,requires_grad=True,
+        device="cuda"
         )
         # try:
-        screenspace_points.retain_grad()
+        accum_grads.retain_grad()
         # except RuntimeError:
         #     pass
-        tanfovx = math.tan(FoVx * 0.5)
-        tanfovy = math.tan(FoVy * 0.5)
-        bg          = self.bg_color if bg_color is None else bg_color
-        viewmatrix  = world_view_transform
-        projmatrix  = full_proj_transform
-        campos      = camera_center
-        prefiltered = False
-        debug       = False
+        tanfovx= math.tan(FoVx * 0.5)
+        tanfovy= math.tan(FoVy * 0.5)
+        viewmatrix =world_view_transform
+        projmatrix =full_proj_transform
+        campos= camera_center
         total_mean = []
         total_sh_coefficients_dc = []
         total_sh_coefficients_ac = []
@@ -179,18 +172,15 @@ class Renderer:
         # total_opacity = self.gaussians_handler.get_param_group_by_name("opacity")
         # total_svec = self.gaussians_handler.get_param_group_by_name("svec")
         # total_quaternion = self.gaussians_handler.get_param_group_by_name("quaternion")
-        means3D   = total_mean
-        means2D   = screenspace_points
-        opacity   = torch.sigmoid(total_opacity)
-        scales    = torch.exp(total_svec)
-        rotations = torch.nn.functional.normalize(total_quaternion)
-        cov3D_precomp = None            # keeping the hook for future use
-        shs             = torch.cat((total_sh_coefficients_dc, total_sh_coefficients_ac), dim=1)
-        colors_precomp = None           # override_color path omitted for brevity
+        activated_opacity  = torch.sigmoid(total_opacity)
+        acrivated_scales = torch.exp(total_svec)
+        rotations= torch.nn.functional.normalize(total_quaternion)
+        shs= torch.cat((total_sh_coefficients_dc, total_sh_coefficients_ac), dim=1)
         try:
-            rendered_image, radii,_,_= _render_gaussians_inline(means3D, means2D, shs, colors_precomp, opacity,scales, rotations, cov3D_precomp,bg, scaling_modifier,viewmatrix, projmatrix,
-                tanfovx, tanfovy,0, campos,prefiltered, debug)
+            rendered_image, extension,_,_= _render_gaussians_inline(total_mean, accum_grads, shs, None, activated_opacity,acrivated_scales, rotations, None,torch.tensor([1, 1, 1],dtype=torch.float32,device="cuda"), 1,viewmatrix, projmatrix,
+                tanfovx, tanfovy,0, campos,False,False)
             torch.cuda.synchronize() 
+            availabele_pts = extension > 0
             #allowing app to continue during errors incuda
         except RuntimeError as e:
             if "illegal memory access" in str(e):
@@ -200,15 +190,14 @@ class Renderer:
                 torch.cuda.synchronize()      # flush the error state
 
                 H, W = image_height, image_width
-                dtype = means3D.dtype
-                device = means3D.device
-
+                dtype = total_mean.dtype
+                device = total_mean.device
                 rendered_image = torch.zeros((H, W, 3), device=device, dtype=dtype)
-                radii          = torch.zeros(means3D.shape[0], device=device, dtype=dtype)
+                extension          = torch.zeros(total_mean.shape[0], device=device, dtype=dtype)
 
             else:
                 # any *other* runtime error is still a real bug
                 raise
             
-        return {"image":  rendered_image.clamp(0, 1),"accum_grads": screenspace_points,
-            "avaialble_pts": radii > 0,}
+        return {"image":  rendered_image.clamp(0, 1),"accum_grads": accum_grads,
+            "avaialble_pts":availabele_pts}
