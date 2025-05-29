@@ -9,6 +9,10 @@
  * For inquiries contact  george.drettakis@inria.fr
  */
 
+ #define BLOCK_X 16
+#define BLOCK_Y 16
+#define NUM_CHANNELS 3
+
 #include "backward.h"
 #include "auxiliary.h"
 #include <cooperative_groups.h>

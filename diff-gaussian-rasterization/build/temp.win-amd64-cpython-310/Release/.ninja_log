@@ -1,11 +1,11 @@
 # ninja log v5
-26	1635	7699251300656752	C:/Users/basel/Desktop/dream gauss/repo 2/DreamGaussCustom/diff-gaussian-rasterization/build/temp.win-amd64-cpython-310/Release/gaussianTiles.obj	18cdb9ce3486c234
-32	6279	7699251346968681	C:/Users/basel/Desktop/dream gauss/repo 2/DreamGaussCustom/diff-gaussian-rasterization/build/temp.win-amd64-cpython-310/Release/pixelGaussiansFull.obj	2c024179b4514c08
-7	6978	7699251351478654	C:/Users/basel/Desktop/dream gauss/repo 2/DreamGaussCustom/diff-gaussian-rasterization/build/temp.win-amd64-cpython-310/Release/backward.obj	8f2f35ceb29f6519
-36	10351	7699251387372793	C:/Users/basel/Desktop/dream gauss/repo 2/DreamGaussCustom/diff-gaussian-rasterization/build/temp.win-amd64-cpython-310/Release/prepareSort.obj	e2c21d027afe34a6
-12	32796	7699251611677579	C:/Users/basel/Desktop/dream gauss/repo 2/DreamGaussCustom/diff-gaussian-rasterization/build/temp.win-amd64-cpython-310/Release/ext.obj	198b19211dd192f3
-2	89773	7699252180815823	C:/Users/basel/Desktop/dream gauss/repo 2/DreamGaussCustom/diff-gaussian-rasterization/build/temp.win-amd64-cpython-310/Release/ADRculling.obj	f096ecb6134eaa35
-46	89930	7699252181095807	C:/Users/basel/Desktop/dream gauss/repo 2/DreamGaussCustom/diff-gaussian-rasterization/build/temp.win-amd64-cpython-310/Release/rasterize_points.obj	736eeac490685bac
-18	92685	7699252210225739	C:/Users/basel/Desktop/dream gauss/repo 2/DreamGaussCustom/diff-gaussian-rasterization/build/temp.win-amd64-cpython-310/Release/gaussianForwardPass.obj	27c4f720af8aecf3
-41	92734	7699252210825848	C:/Users/basel/Desktop/dream gauss/repo 2/DreamGaussCustom/diff-gaussian-rasterization/build/temp.win-amd64-cpython-310/Release/projection.obj	c42a708c6ca875f9
-22	105705	7699252340504946	C:/Users/basel/Desktop/dream gauss/repo 2/DreamGaussCustom/diff-gaussian-rasterization/build/temp.win-amd64-cpython-310/Release/gaussianRasterizer.obj	fb1675d39b267728
+25	1289	7702229201914688	C:/Users/basel/Desktop/dream gauss/final/Word2World/diff-gaussian-rasterization/build/temp.win-amd64-cpython-310/Release/gaussianTiles.obj	96d050a6d6170d13
+31	5538	7702229244192055	C:/Users/basel/Desktop/dream gauss/final/Word2World/diff-gaussian-rasterization/build/temp.win-amd64-cpython-310/Release/pixelGaussiansFull.obj	d3c9150e1cb70358
+6	6044	7702229249300280	C:/Users/basel/Desktop/dream gauss/final/Word2World/diff-gaussian-rasterization/build/temp.win-amd64-cpython-310/Release/backward.obj	708bdb90ea5296d4
+37	9298	7702229281667643	C:/Users/basel/Desktop/dream gauss/final/Word2World/diff-gaussian-rasterization/build/temp.win-amd64-cpython-310/Release/prepareSort.obj	5660957749e52e4
+10	33502	7702229523651285	C:/Users/basel/Desktop/dream gauss/final/Word2World/diff-gaussian-rasterization/build/temp.win-amd64-cpython-310/Release/ext.obj	d42342143ee8517e
+1	91386	7702230101402614	C:/Users/basel/Desktop/dream gauss/final/Word2World/diff-gaussian-rasterization/build/temp.win-amd64-cpython-310/Release/ADRculling.obj	990baf2791a92d5e
+46	91567	7702230102160507	C:/Users/basel/Desktop/dream gauss/final/Word2World/diff-gaussian-rasterization/build/temp.win-amd64-cpython-310/Release/rasterize_points.obj	9c6c7621cc397e3d
+42	94275	7702230130711270	C:/Users/basel/Desktop/dream gauss/final/Word2World/diff-gaussian-rasterization/build/temp.win-amd64-cpython-310/Release/projection.obj	55e4f76a8871300b
+14	94290	7702230130741287	C:/Users/basel/Desktop/dream gauss/final/Word2World/diff-gaussian-rasterization/build/temp.win-amd64-cpython-310/Release/gaussianForwardPass.obj	d917c1d9c92e5b62
+19	105686	7702230244867551	C:/Users/basel/Desktop/dream gauss/final/Word2World/diff-gaussian-rasterization/build/temp.win-amd64-cpython-310/Release/gaussianRasterizer.obj	55e1b6cc4394f8db

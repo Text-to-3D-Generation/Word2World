@@ -4,6 +4,9 @@
 namespace cg = cooperative_groups;
 #include "gaussEval.h"
 #define BLOCK_SIZE 256
+#define BLOCK_X 16
+#define BLOCK_Y 16
+#define NUM_CHANNELS 3
 
 
 
