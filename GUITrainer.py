@@ -147,7 +147,7 @@ class GUITrainer:
         """
         def task():
             self.show_loading("Preparing initial training...")
-            self.trainer.prepare_train()
+            self.trainer.pre_traininig()
             self.hide_loading()
             print("Initial training preparation complete.")
 
@@ -382,8 +382,7 @@ class GUITrainer:
             This function is called recursively using `after` to create a loop.
         """
         if self.trainer.training:
-            t, loss = self.trainer.optimizaiton_iteration()
-
+            loss = self.trainer.optimizaiton_iteration()
             step_ratio = min(1, self.trainer.step / 500)
             print(f"Step: {self.trainer.step}, Loss: {loss:.4f}")
             resolution = self.trainer.get_resolution_for_step(step_ratio)
@@ -406,7 +405,7 @@ class GUITrainer:
         def task():
             self.set_interactive_widgets_state(DISABLED)
             self.trainer.prompt = self.prompt_entry.get().strip()
-            self.trainer.prepare_train()
+            self.trainer.pre_traininig()
             self.trainer.training = True
             time.sleep(1)  # Simulate some delay for starting
             print("Training preparation complete.")

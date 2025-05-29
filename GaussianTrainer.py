@@ -1,10 +1,6 @@
 import os
-import time
 import numpy as np
 import torch
-import torch.nn.functional as F
-from tqdm import tqdm
-from typing import Optional, Dict, Any
 from Renderer import Renderer
 from DynamicCamera import DynamicCamera,safe_normalize
 from guidance.mvdream_interface import MVDream
@@ -22,7 +18,7 @@ class GaussianTrainer:
         self.training = False
         self.optimizer = None
         
-    def prepare_train(self):
+    def pre_traininig(self):
         self.renderer.gaussians_handler.optimizer_setup()
         self.optimizer = self.renderer.gaussians_handler.optimizer
         self.step = 0
@@ -104,19 +100,15 @@ class GaussianTrainer:
     
     def optimizaiton_iteration(self) -> float:
         self.step += 1
-        starter = torch.cuda.Event(enable_timing=True)
-        ender = torch.cuda.Event(enable_timing=True)
-        starter.record()
         render_resolution = self.get_resolution_for_step(min(1, self.step / 500))
         out, images, poses, _ = self.render_training_views(render_resolution)
         self.renderer.gaussians_handler.update_mean_lr(self.step)
         gl = self.compute_guidance_loss(images, poses, min(1, self.step / 500))
         self.optimizer.step()
         if self.should_densify(): self.handle_densification(out)
-        ender.record()
         self.optimizer.zero_grad()
         torch.cuda.synchronize()
-        return starter.elapsed_time(ender),gl
+        return gl
 
     def handle_densification(self, render_output):
         avaialble_pts = render_output["avaialble_pts"]
