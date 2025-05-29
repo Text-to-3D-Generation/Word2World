@@ -9,7 +9,7 @@
  * For inquiries contact  george.drettakis@inria.fr
  */
 
- #define BLOCK_X 16
+#define BLOCK_X 16
 #define BLOCK_Y 16
 #define NUM_CHANNELS 3
 
@@ -169,9 +169,6 @@ __device__ void computeColorFromSH(int idx, int deg, int max_coeffs, const glm::
 	dL_dmeans[idx] += final_mean_gradient;
 }
 
-// Backward version of INVERSE 2D covariance matrix computation
-// (due to length launched as separate kernel before other 
-// backward steps contained in preprocess)
 __global__ void computeCov2DCUDA(int P,
 	const float3* means,
 	const int* radii,
@@ -187,121 +184,191 @@ __global__ void computeCov2DCUDA(int P,
 	if (idx >= P || !(radii[idx] > 0))
 		return;
 
-	// Reading location of 3D covariance for this Gaussian
-	const float* cov3D = cov3Ds + 6 * idx;
-
-	// Fetch gradients, recompute 2D covariance and relevant 
-	// intermediate forward results needed in the backward.
-	float3 mean = means[idx];
-	float3 dL_dconic = { dL_dconics[4 * idx], dL_dconics[4 * idx + 1], dL_dconics[4 * idx + 3] };
-	float3 t = transformPoint4x3(mean, view_matrix);
+	const float* packed_cov = cov3Ds + 6 * idx;
 	
-	const float limx = 1.3f * tan_fovx;
-	const float limy = 1.3f * tan_fovy;
-	const float txtz = t.x / t.z;
-	const float tytz = t.y / t.z;
-	t.x = min(limx, max(-limx, txtz)) * t.z;
-	t.y = min(limy, max(-limy, tytz)) * t.z;
+	float3 center = means[idx];
 	
-	const float x_grad_mul = txtz < -limx || txtz > limx ? 0 : 1;
-	const float y_grad_mul = tytz < -limy || tytz > limy ? 0 : 1;
-
-	glm::mat3 J = glm::mat3(h_x / t.z, 0.0f, -(h_x * t.x) / (t.z * t.z),
-		0.0f, h_y / t.z, -(h_y * t.y) / (t.z * t.z),
-		0, 0, 0);
-
-	glm::mat3 W = glm::mat3(
+	float view_x = view_matrix[0] * center.x + view_matrix[4] * center.y + view_matrix[8] * center.z + view_matrix[12];
+	float view_y = view_matrix[1] * center.x + view_matrix[5] * center.y + view_matrix[9] * center.z + view_matrix[13];
+	float view_z = view_matrix[2] * center.x + view_matrix[6] * center.y + view_matrix[10] * center.z + view_matrix[14];
+	float view_w = view_matrix[3] * center.x + view_matrix[7] * center.y + view_matrix[11] * center.z + view_matrix[15];
+	
+	float w_inv = 1.0f / (view_w + 1e-8f);
+	view_x *= w_inv;
+	view_y *= w_inv;
+	view_z *= w_inv;
+	
+	float3 view_pos = make_float3(view_x, view_y, view_z);
+	
+	const float bound_x = 1.3f * tan_fovx;
+	const float bound_y = 1.3f * tan_fovy;
+	
+	const float proj_x = view_x / view_z;
+	const float proj_y = view_y / view_z;
+	
+	float clipped_proj_x = fminf(bound_x, fmaxf(-bound_x, proj_x));
+	float clipped_proj_y = fminf(bound_y, fmaxf(-bound_y, proj_y));
+	view_pos.x = clipped_proj_x * view_z;
+	view_pos.y = clipped_proj_y * view_z;
+	
+	const float mask_x = (proj_x >= -bound_x && proj_x <= bound_x) ? 1.0f : 0.0f;
+	const float mask_y = (proj_y >= -bound_y && proj_y <= bound_y) ? 1.0f : 0.0f;
+	
+	float z_inv = 1.0f / view_pos.z;
+	float z_inv2 = z_inv * z_inv;
+	
+	glm::mat3 jacobian_proj = glm::mat3(
+		h_x * z_inv, 0.0f, -h_x * view_pos.x * z_inv2,
+		0.0f, h_y * z_inv, -h_y * view_pos.y * z_inv2,
+		0.0f, 0.0f, 0.0f
+	);
+	
+	glm::mat3 rotation_view = glm::mat3(
 		view_matrix[0], view_matrix[4], view_matrix[8],
 		view_matrix[1], view_matrix[5], view_matrix[9],
-		view_matrix[2], view_matrix[6], view_matrix[10]);
-
-	glm::mat3 Vrk = glm::mat3(
-		cov3D[0], cov3D[1], cov3D[2],
-		cov3D[1], cov3D[3], cov3D[4],
-		cov3D[2], cov3D[4], cov3D[5]);
-
-	glm::mat3 T = W * J;
-
-	glm::mat3 cov2D = glm::transpose(T) * glm::transpose(Vrk) * T;
-
-	// Use helper variables for 2D covariance entries. More compact.
-	float a = cov2D[0][0] += 0.3f;
-	float b = cov2D[0][1];
-	float c = cov2D[1][1] += 0.3f;
-
-	float denom = a * c - b * b;
-	float dL_da = 0, dL_db = 0, dL_dc = 0;
-	float denom2inv = 1.0f / ((denom * denom) + 0.0000001f);
-
-	if (denom2inv != 0)
-	{
-		// Gradients of loss w.r.t. entries of 2D covariance matrix,
-		// given gradients of loss w.r.t. conic matrix (inverse covariance matrix).
-		// e.g., dL / da = dL / d_conic_a * d_conic_a / d_a
-		dL_da = denom2inv * (-c * c * dL_dconic.x + 2 * b * c * dL_dconic.y + (denom - a * c) * dL_dconic.z);
-		dL_dc = denom2inv * (-a * a * dL_dconic.z + 2 * a * b * dL_dconic.y + (denom - a * c) * dL_dconic.x);
-		dL_db = denom2inv * 2 * (b * c * dL_dconic.x - (denom + 2 * b * b) * dL_dconic.y + a * b * dL_dconic.z);
-
-		// Gradients of loss L w.r.t. each 3D covariance matrix (Vrk) entry, 
-		// given gradients w.r.t. 2D covariance matrix (diagonal).
-		// cov2D = transpose(T) * transpose(Vrk) * T;
-		dL_dcov[6 * idx + 0] = (T[0][0] * T[0][0] * dL_da + T[0][0] * T[1][0] * dL_db + T[1][0] * T[1][0] * dL_dc);
-		dL_dcov[6 * idx + 3] = (T[0][1] * T[0][1] * dL_da + T[0][1] * T[1][1] * dL_db + T[1][1] * T[1][1] * dL_dc);
-		dL_dcov[6 * idx + 5] = (T[0][2] * T[0][2] * dL_da + T[0][2] * T[1][2] * dL_db + T[1][2] * T[1][2] * dL_dc);
-
-		// Gradients of loss L w.r.t. each 3D covariance matrix (Vrk) entry, 
-		// given gradients w.r.t. 2D covariance matrix (off-diagonal).
-		// Off-diagonal elements appear twice --> double the gradient.
-		// cov2D = transpose(T) * transpose(Vrk) * T;
-		dL_dcov[6 * idx + 1] = 2 * T[0][0] * T[0][1] * dL_da + (T[0][0] * T[1][1] + T[0][1] * T[1][0]) * dL_db + 2 * T[1][0] * T[1][1] * dL_dc;
-		dL_dcov[6 * idx + 2] = 2 * T[0][0] * T[0][2] * dL_da + (T[0][0] * T[1][2] + T[0][2] * T[1][0]) * dL_db + 2 * T[1][0] * T[1][2] * dL_dc;
-		dL_dcov[6 * idx + 4] = 2 * T[0][2] * T[0][1] * dL_da + (T[0][1] * T[1][2] + T[0][2] * T[1][1]) * dL_db + 2 * T[1][1] * T[1][2] * dL_dc;
+		view_matrix[2], view_matrix[6], view_matrix[10]
+	);
+	
+	glm::mat3 covariance_3d = glm::mat3(
+		packed_cov[0], packed_cov[1], packed_cov[2],
+		packed_cov[1], packed_cov[3], packed_cov[4],
+		packed_cov[2], packed_cov[4], packed_cov[5]
+	);
+	
+	glm::mat3 transform_matrix = rotation_view * jacobian_proj;
+	
+	glm::mat3 temp_cov = glm::transpose(covariance_3d) * transform_matrix;
+	glm::mat3 covariance_2d = glm::transpose(transform_matrix) * temp_cov;
+	
+	covariance_2d[0][0] += 0.3f;
+	covariance_2d[1][1] += 0.3f;
+	
+	float a = covariance_2d[0][0];
+	float b = covariance_2d[0][1];
+	float c = covariance_2d[1][1];
+	
+	float determinant = a * c - b * b;
+	float det_inv_sq = 1.0f / (determinant * determinant + 1e-7f);
+	
+	float3 conic_grad = make_float3(
+		dL_dconics[4 * idx],
+		dL_dconics[4 * idx + 1],
+		dL_dconics[4 * idx + 3]
+	);
+	
+	float grad_a = 0.0f, grad_b = 0.0f, grad_c = 0.0f;
+	
+	if (det_inv_sq > 0) {
+		grad_a = det_inv_sq * (
+			-c * c * conic_grad.x + 
+			2.0f * b * c * conic_grad.y + 
+			(determinant - a * c) * conic_grad.z
+		);
+		
+		grad_b = det_inv_sq * 2.0f * (
+			b * c * conic_grad.x - 
+			(determinant + 2.0f * b * b) * conic_grad.y + 
+			a * b * conic_grad.z
+		);
+		
+		grad_c = det_inv_sq * (
+			-a * a * conic_grad.z + 
+			2.0f * a * b * conic_grad.y + 
+			(determinant - a * c) * conic_grad.x
+		);
+		
+		dL_dcov[6 * idx + 0] = transform_matrix[0][0] * transform_matrix[0][0] * grad_a + 
+		                       transform_matrix[0][0] * transform_matrix[1][0] * grad_b + 
+		                       transform_matrix[1][0] * transform_matrix[1][0] * grad_c;
+		
+		dL_dcov[6 * idx + 3] = transform_matrix[0][1] * transform_matrix[0][1] * grad_a + 
+		                       transform_matrix[0][1] * transform_matrix[1][1] * grad_b + 
+		                       transform_matrix[1][1] * transform_matrix[1][1] * grad_c;
+		
+		dL_dcov[6 * idx + 5] = transform_matrix[0][2] * transform_matrix[0][2] * grad_a + 
+		                       transform_matrix[0][2] * transform_matrix[1][2] * grad_b + 
+		                       transform_matrix[1][2] * transform_matrix[1][2] * grad_c;
+		
+		dL_dcov[6 * idx + 1] = 2.0f * (transform_matrix[0][0] * transform_matrix[0][1] * grad_a + 
+		                               (transform_matrix[0][0] * transform_matrix[1][1] + 
+		                                transform_matrix[0][1] * transform_matrix[1][0]) * grad_b * 0.5f + 
+		                               transform_matrix[1][0] * transform_matrix[1][1] * grad_c);
+		
+		dL_dcov[6 * idx + 2] = 2.0f * (transform_matrix[0][0] * transform_matrix[0][2] * grad_a + 
+		                               (transform_matrix[0][0] * transform_matrix[1][2] + 
+		                                transform_matrix[0][2] * transform_matrix[1][0]) * grad_b * 0.5f + 
+		                               transform_matrix[1][0] * transform_matrix[1][2] * grad_c);
+		
+		dL_dcov[6 * idx + 4] = 2.0f * (transform_matrix[0][1] * transform_matrix[0][2] * grad_a + 
+		                               (transform_matrix[0][1] * transform_matrix[1][2] + 
+		                                transform_matrix[0][2] * transform_matrix[1][1]) * grad_b * 0.5f + 
+		                               transform_matrix[1][1] * transform_matrix[1][2] * grad_c);
+	} else {
+		for (int i = 0; i < 6; i++) {
+			dL_dcov[6 * idx + i] = 0.0f;
+		}
 	}
-	else
-	{
-		for (int i = 0; i < 6; i++)
-			dL_dcov[6 * idx + i] = 0;
-	}
-
-	// Gradients of loss w.r.t. upper 2x3 portion of intermediate matrix T
-	// cov2D = transpose(T) * transpose(Vrk) * T;
-	float dL_dT00 = 2 * (T[0][0] * Vrk[0][0] + T[0][1] * Vrk[0][1] + T[0][2] * Vrk[0][2]) * dL_da +
-		(T[1][0] * Vrk[0][0] + T[1][1] * Vrk[0][1] + T[1][2] * Vrk[0][2]) * dL_db;
-	float dL_dT01 = 2 * (T[0][0] * Vrk[1][0] + T[0][1] * Vrk[1][1] + T[0][2] * Vrk[1][2]) * dL_da +
-		(T[1][0] * Vrk[1][0] + T[1][1] * Vrk[1][1] + T[1][2] * Vrk[1][2]) * dL_db;
-	float dL_dT02 = 2 * (T[0][0] * Vrk[2][0] + T[0][1] * Vrk[2][1] + T[0][2] * Vrk[2][2]) * dL_da +
-		(T[1][0] * Vrk[2][0] + T[1][1] * Vrk[2][1] + T[1][2] * Vrk[2][2]) * dL_db;
-	float dL_dT10 = 2 * (T[1][0] * Vrk[0][0] + T[1][1] * Vrk[0][1] + T[1][2] * Vrk[0][2]) * dL_dc +
-		(T[0][0] * Vrk[0][0] + T[0][1] * Vrk[0][1] + T[0][2] * Vrk[0][2]) * dL_db;
-	float dL_dT11 = 2 * (T[1][0] * Vrk[1][0] + T[1][1] * Vrk[1][1] + T[1][2] * Vrk[1][2]) * dL_dc +
-		(T[0][0] * Vrk[1][0] + T[0][1] * Vrk[1][1] + T[0][2] * Vrk[1][2]) * dL_db;
-	float dL_dT12 = 2 * (T[1][0] * Vrk[2][0] + T[1][1] * Vrk[2][1] + T[1][2] * Vrk[2][2]) * dL_dc +
-		(T[0][0] * Vrk[2][0] + T[0][1] * Vrk[2][1] + T[0][2] * Vrk[2][2]) * dL_db;
-
-	// Gradients of loss w.r.t. upper 3x2 non-zero entries of Jacobian matrix
-	// T = W * J
-	float dL_dJ00 = W[0][0] * dL_dT00 + W[0][1] * dL_dT01 + W[0][2] * dL_dT02;
-	float dL_dJ02 = W[2][0] * dL_dT00 + W[2][1] * dL_dT01 + W[2][2] * dL_dT02;
-	float dL_dJ11 = W[1][0] * dL_dT10 + W[1][1] * dL_dT11 + W[1][2] * dL_dT12;
-	float dL_dJ12 = W[2][0] * dL_dT10 + W[2][1] * dL_dT11 + W[2][2] * dL_dT12;
-
-	float tz = 1.f / t.z;
-	float tz2 = tz * tz;
-	float tz3 = tz2 * tz;
-
-	// Gradients of loss w.r.t. transformed Gaussian mean t
-	float dL_dtx = x_grad_mul * -h_x * tz2 * dL_dJ02;
-	float dL_dty = y_grad_mul * -h_y * tz2 * dL_dJ12;
-	float dL_dtz = -h_x * tz2 * dL_dJ00 - h_y * tz2 * dL_dJ11 + (2 * h_x * t.x) * tz3 * dL_dJ02 + (2 * h_y * t.y) * tz3 * dL_dJ12;
-
-	// Account for transformation of mean to t
-	// t = transformPoint4x3(mean, view_matrix);
-	float3 dL_dmean = transformVec4x3Transpose({ dL_dtx, dL_dty, dL_dtz }, view_matrix);
-
-	// Gradients of loss w.r.t. Gaussian means, but only the portion 
-	// that is caused because the mean affects the covariance matrix.
-	// Additional mean gradient is accumulated in BACKWARD::preprocess.
-	dL_dmeans[idx] = dL_dmean;
+	
+	float grad_T00 = 2.0f * (transform_matrix[0][0] * covariance_3d[0][0] + 
+	                         transform_matrix[0][1] * covariance_3d[0][1] + 
+	                         transform_matrix[0][2] * covariance_3d[0][2]) * grad_a +
+	                 (transform_matrix[1][0] * covariance_3d[0][0] + 
+	                  transform_matrix[1][1] * covariance_3d[0][1] + 
+	                  transform_matrix[1][2] * covariance_3d[0][2]) * grad_b;
+	
+	float grad_T01 = 2.0f * (transform_matrix[0][0] * covariance_3d[1][0] + 
+	                         transform_matrix[0][1] * covariance_3d[1][1] + 
+	                         transform_matrix[0][2] * covariance_3d[1][2]) * grad_a +
+	                 (transform_matrix[1][0] * covariance_3d[1][0] + 
+	                  transform_matrix[1][1] * covariance_3d[1][1] + 
+	                  transform_matrix[1][2] * covariance_3d[1][2]) * grad_b;
+	
+	float grad_T02 = 2.0f * (transform_matrix[0][0] * covariance_3d[2][0] + 
+	                         transform_matrix[0][1] * covariance_3d[2][1] + 
+	                         transform_matrix[0][2] * covariance_3d[2][2]) * grad_a +
+	                 (transform_matrix[1][0] * covariance_3d[2][0] + 
+	                  transform_matrix[1][1] * covariance_3d[2][1] + 
+	                  transform_matrix[1][2] * covariance_3d[2][2]) * grad_b;
+	
+	float grad_T10 = 2.0f * (transform_matrix[1][0] * covariance_3d[0][0] + 
+	                         transform_matrix[1][1] * covariance_3d[0][1] + 
+	                         transform_matrix[1][2] * covariance_3d[0][2]) * grad_c +
+	                 (transform_matrix[0][0] * covariance_3d[0][0] + 
+	                  transform_matrix[0][1] * covariance_3d[0][1] + 
+	                  transform_matrix[0][2] * covariance_3d[0][2]) * grad_b;
+	
+	float grad_T11 = 2.0f * (transform_matrix[1][0] * covariance_3d[1][0] + 
+	                         transform_matrix[1][1] * covariance_3d[1][1] + 
+	                         transform_matrix[1][2] * covariance_3d[1][2]) * grad_c +
+	                 (transform_matrix[0][0] * covariance_3d[1][0] + 
+	                  transform_matrix[0][1] * covariance_3d[1][1] + 
+	                  transform_matrix[0][2] * covariance_3d[1][2]) * grad_b;
+	
+	float grad_T12 = 2.0f * (transform_matrix[1][0] * covariance_3d[2][0] + 
+	                         transform_matrix[1][1] * covariance_3d[2][1] + 
+	                         transform_matrix[1][2] * covariance_3d[2][2]) * grad_c +
+	                 (transform_matrix[0][0] * covariance_3d[2][0] + 
+	                  transform_matrix[0][1] * covariance_3d[2][1] + 
+	                  transform_matrix[0][2] * covariance_3d[2][2]) * grad_b;
+	
+	float grad_J00 = rotation_view[0][0] * grad_T00 + rotation_view[0][1] * grad_T01 + rotation_view[0][2] * grad_T02;
+	float grad_J02 = rotation_view[2][0] * grad_T00 + rotation_view[2][1] * grad_T01 + rotation_view[2][2] * grad_T02;
+	float grad_J11 = rotation_view[1][0] * grad_T10 + rotation_view[1][1] * grad_T11 + rotation_view[1][2] * grad_T12;
+	float grad_J12 = rotation_view[2][0] * grad_T10 + rotation_view[2][1] * grad_T11 + rotation_view[2][2] * grad_T12;
+	
+	float z_inv3 = z_inv2 * z_inv;
+	float grad_view_x = mask_x * (-h_x * z_inv2 * grad_J02);
+	float grad_view_y = mask_y * (-h_y * z_inv2 * grad_J12);
+	float grad_view_z = -h_x * z_inv2 * grad_J00 - h_y * z_inv2 * grad_J11 + 
+	                    2.0f * h_x * view_pos.x * z_inv3 * grad_J02 + 
+	                    2.0f * h_y * view_pos.y * z_inv3 * grad_J12;
+	
+	float3 world_grad;
+	world_grad.x = view_matrix[0] * grad_view_x + view_matrix[1] * grad_view_y + view_matrix[2] * grad_view_z;
+	world_grad.y = view_matrix[4] * grad_view_x + view_matrix[5] * grad_view_y + view_matrix[6] * grad_view_z;
+	world_grad.z = view_matrix[8] * grad_view_x + view_matrix[9] * grad_view_y + view_matrix[10] * grad_view_z;
+	
+	dL_dmeans[idx] = world_grad;
 }
 
 // Backward pass for the conversion of scale and rotation to a 
