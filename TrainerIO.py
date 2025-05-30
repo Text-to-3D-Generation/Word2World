@@ -10,6 +10,7 @@ import torch.nn.functional as F
 import base64
 import nvdiffrast.torch as dr
 from insert_in_grid import mipmap_bilinear_insert_2d
+from utils_for_mesh import extract_tetrahedral_mesh
 class NumpyEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, np.ndarray):
@@ -86,7 +87,7 @@ class TrainerIO:
                   device: str, texture_size: int = 1024, camera=None):
         """Save extracted mesh with optional texture"""
         print(f"[INFO] Extracting mesh...")
-        mesh = renderer.gaussians_handler.extract_tetrahedral_mesh(path, density_thresh)
+        mesh = extract_tetrahedral_mesh(renderer.gaussians_handler.gaussians,path, density_thresh)
         
         if with_texture:
             print(f"[INFO] Generating texture...")

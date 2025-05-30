@@ -1,21 +1,9 @@
-import os
-import numpy as np
 from GaussianIO import GaussianIO
 import torch
 from torch import nn
-from vtkmodules.vtkCommonDataModel import vtkImageData
-from vtkmodules.vtkFiltersGeneral import vtkDataSetTriangleFilter
-from vtkmodules.vtkFiltersCore import vtkContour3DLinearGrid
-from vtkmodules.vtkCommonCore import VTK_FLOAT
-from vtkmodules.util.numpy_support import numpy_to_vtk
-from pyvista import wrap
 from Densification import Densification
-from TriangleMesh import TriangleMesh
-from utils_for_mesh import simplify_mesh_geometry, refine_mesh_topology
-from misc_utils import inverse_sigmoid, get_expon_lr_func, extract_symmetric, compute_3d_gaussian_coefficient, build_scaling_rotation_matrix
-import kiui
+from misc_utils import inverse_sigmoid, create_exponential_learning_rate_schedule
 import json
-
 from primitives import convert_pcd_to_gaussians, GaussianPrimitive
 
 
@@ -29,12 +17,6 @@ class GaussiansHandler:
         #used for densification
         self.mean_gradient_accum = torch.zeros((len(self.gaussians), 1), device="cuda")
         self.counter = torch.zeros((len(self.gaussians), 1), device="cuda")
-    
-    def covariance_activation(self, scaling, scaling_modifier, rotation):
-        """Construct covariance matrix from scaling and rotation for all Gaussians"""
-        L = build_scaling_rotation_matrix(scaling_modifier * scaling, rotation)
-        actual_covariance = L @ L.transpose(1, 2)
-        return extract_symmetric(actual_covariance)
     
     def get_param_group_by_name(self, name):
         for group in self.optimizer.param_groups:
@@ -61,7 +43,7 @@ class GaussiansHandler:
             collected_params[group.get("name")] = group["params"][0]
         self.update_parameters(collected_params)
         self.densifier = Densification(self.optimizer, device="cuda")
-        self.mean_scheduler_args = get_expon_lr_func(lr_init=0.001 * 10,lr_final=0.00002 * 10,lr_delay_mult=0.02,max_steps=300)
+        self.mean_scheduler_args = create_exponential_learning_rate_schedule(0.01,0.0002,300)
         print("-------------Optimizer Params----------")
         for group in self.optimizer.param_groups:
             print(f"{group['name']} shape: {group['params'][0].shape}")
@@ -119,115 +101,6 @@ class GaussiansHandler:
             self.gaussians.append(g)
         self.mean_gradient_accum = torch.zeros((len(self.gaussians), 1), device="cuda")
         self.counter = torch.zeros((len(self.gaussians), 1), device="cuda")
-    
-    # ============= Mesh Extraction Methods =============
-    @torch.no_grad()
-    def extract_fields(self, resolution=128, num_blocks=16, relax_ratio=1.5):
-        """Extract occupancy field for mesh extraction"""
-        block_size = 2 / num_blocks
-        assert resolution % block_size == 0
-        split_size = resolution // num_blocks
-
-        opacities = torch.sigmoid(self._opacity)
-        mask = (opacities > 0.005).squeeze(1)
-        
-        means = self._mean[mask]
-        stds = torch.exp(self._svec)[mask]
-        
-        # Normalize to ~ [-1, 1]
-        mn, mx = means.amin(0), means.amax(0)
-        self.center = (mn + mx) / 2
-        self.scale = 1.8 / (mx - mn).amax().item()
-
-        means = (means - self.center) * self.scale
-        stds = stds * self.scale
-
-        covs = self.covariance_activation(stds, 1, self._quaternion[mask])
-
-        device = opacities.device
-        occ = torch.zeros([resolution] * 3, dtype=torch.float32, device=device)
-
-        X = torch.linspace(-1, 1, resolution).split(split_size)
-        Y = torch.linspace(-1, 1, resolution).split(split_size)
-        Z = torch.linspace(-1, 1, resolution).split(split_size)
-
-        for xi, xs in enumerate(X):
-            for yi, ys in enumerate(Y):
-                for zi, zs in enumerate(Z):
-                    xx, yy, zz = torch.meshgrid(xs, ys, zs)
-                    pts = torch.cat([xx.reshape(-1, 1), yy.reshape(-1, 1), zz.reshape(-1, 1)], dim=-1).to(device)
-                    
-                    vmin, vmax = pts.amin(0), pts.amax(0)
-                    vmin -= block_size * relax_ratio
-                    vmax += block_size * relax_ratio
-                    mask = (means < vmax).all(-1) & (means > vmin).all(-1)
-                    
-                    if not mask.any():
-                        continue
-                        
-                    mask_means = means[mask]
-                    mask_covs = covs[mask]
-                    mask_opas = opacities[mask].view(1, -1)
-
-                    g_pts = pts.unsqueeze(1).repeat(1, mask_covs.shape[0], 1) - mask_means.unsqueeze(0)
-                    g_covs = mask_covs.unsqueeze(0).repeat(pts.shape[0], 1, 1)
-
-                    batch_g = 1024
-                    val = 0
-                    for start in range(0, g_covs.shape[1], batch_g):
-                        end = min(start + batch_g, g_covs.shape[1])
-                        w = compute_3d_gaussian_coefficient(
-                            g_pts[:, start:end].reshape(-1, 3), 
-                            g_covs[:, start:end].reshape(-1, 6)
-                        ).reshape(pts.shape[0], -1)
-                        val += (mask_opas[:, start:end] * w).sum(-1)
-                    
-                    occ[xi * split_size: xi * split_size + len(xs), 
-                        yi * split_size: yi * split_size + len(ys), 
-                        zi * split_size: zi * split_size + len(zs)] = val.reshape(len(xs), len(ys), len(zs))
-        
-        kiui.lo(occ, verbose=1)
-        return occ
-    
-    def extract_tetrahedral_mesh(self, path, density_thresh=1, resolution=128, decimate_target=1e5):
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        occ = self.extract_fields(resolution).detach().cpu().numpy()
-        flat = occ.flatten(order="F")
-
-        img = vtkImageData()
-        img.SetDimensions(resolution, resolution, resolution)
-        spacing = 2.0 / (resolution - 1)
-        img.SetSpacing(spacing, spacing, spacing)
-        img.SetOrigin(-1, -1, -1)
-
-        vtk_arr = numpy_to_vtk(flat, deep=True, array_type=VTK_FLOAT)
-        vtk_arr.SetName("densities")
-        img.GetPointData().SetScalars(vtk_arr)
-
-        tri = vtkDataSetTriangleFilter()
-        tri.SetInputData(img)
-        tri.Update()
-        tetGrid = tri.GetOutput()
-
-        contour = vtkContour3DLinearGrid()
-        contour.SetInputData(tetGrid)
-        contour.SetValue(0, density_thresh)
-        contour.SetMergePoints(True)
-        contour.Update()
-
-        cont = wrap(contour.GetOutput())
-        verts = cont.points
-        faces = cont.faces.reshape(-1, 4)[:, 1:]
-
-        verts = verts / self.scale + self.center.detach().cpu().numpy()
-        verts, faces = refine_mesh_topology(verts, faces, remesh=True, remesh_size=0.015)
-        
-        if decimate_target > 0 and faces.shape[0] > decimate_target:
-            verts, faces = simplify_mesh_geometry(verts, faces, decimate_target)
-
-        v = torch.from_numpy(verts.astype(np.float32)).contiguous().cuda()
-        f = torch.from_numpy(faces.astype(np.int32)).contiguous().cuda()
-        return TriangleMesh(vertices=v, faces=f, device="cuda")
     
     def opacity_decay(self):
         total_opacity = []
