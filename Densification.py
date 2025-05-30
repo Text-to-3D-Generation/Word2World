@@ -74,15 +74,15 @@ class Densification:
         normalzided_split_quaternion = split_quaternion / quaternion_norm[:, None]
         split_rotmat = torch.zeros((normalzided_split_quaternion.size(0), 3, 3), device='cuda')
         q_w, q_x, q_y, q_z = normalzided_split_quaternion[:, 0], normalzided_split_quaternion[:, 1], normalzided_split_quaternion[:, 2], normalzided_split_quaternion[:, 3]
-        split_rotmat[:, 0, 0] = 1 - 2 * (q_y**2 + q_z**2)
+        split_rotmat[:, 0, 0]= 1 - 2 * (q_y**2 + q_z**2)
         split_rotmat[:, 1, 0] = 2 *(q_x*q_y + q_w*q_z)
-        split_rotmat[:, 2, 0] = 2 * (q_x*q_z - q_w*q_y)
+        split_rotmat[:, 2, 0] =2 * (q_x*q_z - q_w*q_y)
 
         split_rotmat[:, 0, 1] = 2 *(q_x*q_y - q_w*q_z)
-        split_rotmat[:, 1, 1] = 1 -2 * (q_x**2 + q_z**2)
+        split_rotmat[:, 1, 1]= 1 -2 * (q_x**2 + q_z**2)
         split_rotmat[:, 2, 1] = 2 * (q_y*q_z + q_w*q_x)
 
-        split_rotmat[:, 0, 2] = 2 * (q_x*q_z + q_w*q_y)
+        split_rotmat[:, 0, 2]= 2 * (q_x*q_z + q_w*q_y)
         split_rotmat[:, 1, 2] = 2 * (q_y*q_z - q_w*q_x)
         split_rotmat[:, 2, 2] = 1 - 2 *(q_x**2 + q_y**2)
 
@@ -95,7 +95,7 @@ class Densification:
             "svec": split_raw_svec,"quaternion":split_quaternion}
         #print(new_params)
         self.optimizer.densify_on_optimizer(new_params)
-        prune_mask = torch.cat((mask,torch.zeros(split_factor * mask.sum(), device=self.device, dtype=bool),))
+        prune_mask = torch.cat((mask,torch.zeros(split_factor*mask.sum(), device=self.device, dtype=bool),))
         all_params = self._prune_treatment(prune_mask)
         return all_params,mask
 
@@ -133,7 +133,7 @@ class Densification:
 
 
 
-    #######################################################################################################
+    ########################################################################
     
     def _prune_treatment(self, mask):
         # Invert the mask to get the valid components to KEEP

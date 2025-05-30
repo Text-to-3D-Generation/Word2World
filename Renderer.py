@@ -199,5 +199,5 @@ class Renderer:
                 # any *other* runtime error is still a real bug
                 raise
             
-        return {"image":  rendered_image.clamp(0, 1),"accum_grads": accum_grads,
+        return {"image":  rendered_image,"accum_grads": accum_grads,
             "avaialble_pts":availabele_pts}

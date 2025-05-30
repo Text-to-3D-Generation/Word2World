@@ -7,7 +7,7 @@ from misc_utils import flatten_sh_coefficients
 class GaussianIO:
     
     @staticmethod
-    def save_ply(path,mean,sh_coefficients_dc,sh_coefficients_ac,opacities,svec,quaternions):
+    def save_as_ply(path,mean,sh_coefficients_dc,sh_coefficients_ac,opacities,svec,quaternions):
         os.makedirs(os.path.dirname(path), exist_ok=True)
         position_data = mean.detach().cpu().numpy()
         dc_flat = flatten_sh_coefficients(sh_coefficients_dc)
@@ -45,7 +45,7 @@ class GaussianIO:
         PlyData([vertex_element]).write(path)
 
     @staticmethod
-    def load_ply(path):
+    def load_from_ply(path):
         ply_data = PlyData.read(path)
         vertex_data = ply_data['vertex']
         positions = np.column_stack((vertex_data['x'],vertex_data['y'],vertex_data['z']))

@@ -2,7 +2,7 @@ import os
 import numpy as np
 import torch
 from Renderer import Renderer
-from DynamicCamera import DynamicCamera,safe_normalize
+from DynamicCamera import DynamicCamera,vector_ops
 from guidance.mvdream_interface import MVDream
 from TrainerIO import TrainerIO
 from misc_utils import get_projection_matrix
@@ -56,11 +56,11 @@ class GaussianTrainer:
             target = np.zeros(3, dtype=np.float32)
             campos = np.array([x, y, z]) + target  # offset by target position
             pose = np.eye(4, dtype=np.float32)  # initialize 4x4 identity
-            forward = safe_normalize(campos - target)
+            forward = vector_ops(campos - target,normalize=True)
             up = np.array([0, 1, 0], dtype=np.float32)
-            right = safe_normalize(np.cross(up, forward))  # right-handed
+            right = vector_ops(np.cross(up, forward),normalize=True)  # right-handed
             up = np.cross(forward, right)  # recompute up
-            up = safe_normalize(up) #re-normalize
+            up = vector_ops(up,normalize=True) #re-normalize
             pose[:3, :3] = np.stack([right, up, forward], axis=1)  # set rotation part
             pose[:3, 3] = campos
             view = pose
@@ -83,7 +83,7 @@ class GaussianTrainer:
             CC = -c2w[:3, 3]
 
             render_out = self.renderer.render(FX, FY, W_V_transform, FULL_PROJ,CC, IW, IH)
-            images.append(render_out["image"].unsqueeze(0))
+            images.append(render_out["image"].clamp(0, 1).unsqueeze(0))
 
             if azimuth == azmiuths[0]: 
                 out = render_out
@@ -122,16 +122,16 @@ class GaussianTrainer:
             #self.renderer.gaussians_handler.agressive_splitting(self.opt.th1,self.opt.th2,self.opt.num_tiles,self.opt.split_factor)
         
         if self.step % 100 == 0:
-            self.renderer.gaussians_handler.densification_cycle(max_grad=0.01,min_opacity=0.01)
+            self.renderer.gaussians_handler.adc_cycle(max_grad=0.01,min_opacity=0.01)
 
         # if self.step % 250 == 0:
         #     self.renderer.gaussians_handler.opacity_decay()
 
-    def save_model(self, mode=1, texture_size=1024, user_save=False, model_name="", save_dir=""):
+    def save_model(self, model_type=1, texture_size=1024, user_save=False, model_name="", save_dir=""):
         t_name = "mesh"
         extension = "ply"
-        if mode == 0:
+        if model_type == 0:
             t_name = "model"
-        if mode == 2:
+        if model_type == 2:
             extension = "obj"
-        return TrainerIO.save_model(renderer=self.renderer,path=os.path.join("outputs", os.path.join(save_dir, f"{model_name}_{t_name}.{extension}")),mode=mode,density_thresh=1,texture_size=texture_size,device=self.device,compress=False,camera = self.cam)
+        return TrainerIO.save_model(renderer=self.renderer,path=os.path.join("outputs", os.path.join(save_dir, f"{model_name}_{t_name}.{extension}")),model_type=model_type,density_thresh=1,texture_size=texture_size,device=self.device,compress=False,camera = self.cam)

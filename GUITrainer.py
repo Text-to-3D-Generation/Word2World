@@ -481,7 +481,7 @@ class GUITrainer:
             self.show_loading("Exporting mesh & texture...")
 
             try:
-                self.trainer.save_model(mode=3,user_save=True,
+                self.trainer.save_model(model_type=3,user_save=True,
                     model_name=folder_info["folder_name"],save_dir=full_export_path)
                 print(f"Model exported to: {full_export_path}")
             except Exception as e:

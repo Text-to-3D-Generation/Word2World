@@ -2,27 +2,21 @@ import torch
 from scipy.spatial.transform import Rotation as R
 from typing import Optional
 
+def vector_ops(x, eps: float = 1e-20, normalize: bool = False):
+    if not isinstance(x, torch.Tensor):
+        x = torch.tensor(x, dtype=torch.float32)
+    length = torch.sqrt(torch.clamp(torch.dot(x, x), min=eps))
+    return x / length if normalize else length
+
+def compute_fovx(fovy, width, height):
+    return (2 * torch.atan(torch.tan(fovy / 2) * width / height)).cpu().numpy()
 
 def dot(x, y):
     if not isinstance(x, torch.Tensor):
         x = torch.tensor(x, dtype=torch.float32)
     if not isinstance(y, torch.Tensor):
         y = torch.tensor(y, dtype=torch.float32)
-    return torch.sum(x * y, -1)
-
-
-def length(x, eps: float = 1e-20):
-    if not isinstance(x, torch.Tensor):
-        x = torch.tensor(x, dtype=torch.float32)
-    return torch.sqrt(torch.clamp(dot(x, x), min=eps))
-
-
-def safe_normalize(x, eps: float = 1e-20):
-    return x / length(x, eps)
-
-def compute_fovx(fovy, width, height):
-    return (2 * torch.atan(torch.tan(fovy / 2) * width / height)).cpu().numpy()
-
+    return torch.sum(x*y, -1)
 
 def build_pose_matrix(rot, radius, center):
     T = torch.eye(4)
@@ -32,7 +26,6 @@ def build_pose_matrix(rot, radius, center):
     pose = torch.matmul(R4, T)
     pose[:3, 3] -= center
     return pose
-
 
 def compute_perspective(fovy, width, height, near, far):
     y = torch.tan(fovy / 2)

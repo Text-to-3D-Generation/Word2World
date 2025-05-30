@@ -73,7 +73,7 @@ class GaussiansHandler:
             if param_group["name"] == "mean":
                 param_group['lr'] = self.mean_scheduler_args(iteration)
                 
-    def save_ply(self, path):
+    def save_as_ply(self, path):
         total_mean = []
         total_sh_coefficients_dc = []
         total_sh_coefficients_ac = []
@@ -103,11 +103,11 @@ class GaussiansHandler:
         # total_svec = self.get_param_group_by_name("svec")
         # total_quaternion = self.get_param_group_by_name("quaternion")
 
-        GaussianIO.save_ply(path=path,mean=total_mean,sh_coefficients_dc=total_sh_coefficients_dc,sh_coefficients_ac=total_sh_coefficients_ac,opacities=total_opacity,
+        GaussianIO.save_as_ply(path=path,mean=total_mean,sh_coefficients_dc=total_sh_coefficients_dc,sh_coefficients_ac=total_sh_coefficients_ac,opacities=total_opacity,
             svec=total_svec,quaternions=total_quaternion)
 
-    def load_ply(self, path):
-        data = GaussianIO.load_ply(path, self.max_sh_order)
+    def load_from_ply(self, path):
+        data = GaussianIO.load_from_ply(path, self.max_sh_order)
         self.gaussians = []
         for i in range(data["mean"].shape[0]):
             g = GaussianPrimitive(mean=torch.tensor(data["mean"][i], dtype=torch.float, device="cuda"),
@@ -189,7 +189,7 @@ class GaussiansHandler:
         kiui.lo(occ, verbose=1)
         return occ
     
-    def extract_mesh_tetra(self, path, density_thresh=1, resolution=128, decimate_target=1e5):
+    def extract_tetrahedral_mesh(self, path, density_thresh=1, resolution=128, decimate_target=1e5):
         os.makedirs(os.path.dirname(path), exist_ok=True)
         occ = self.extract_fields(resolution).detach().cpu().numpy()
         flat = occ.flatten(order="F")
@@ -241,8 +241,9 @@ class GaussiansHandler:
             g.opacity = nn.Parameter(opacities_new[i].requires_grad_(True))
     
     def collect_densification_info(self, viewspace_point_tensor, update_filter):
-        self.mean_gradient_accum[update_filter] += torch.norm(viewspace_point_tensor.grad[update_filter,:2], dim=-1, keepdim=True)
         self.counter[update_filter] += 1
+        self.mean_gradient_accum[update_filter] += torch.norm(viewspace_point_tensor.grad[update_filter,:2], dim=-1, keepdim=True)
+        
 
     def update_parameters(self, new_params):
         self.gaussians = []
@@ -308,7 +309,7 @@ class GaussiansHandler:
             self.counter = self.counter[~mask]
         return num_prunes
     
-    def densification_cycle(self, max_grad, min_opacity):  
+    def adc_cycle(self, max_grad, min_opacity):  
         num_clone = self.clone_cycle(max_grad)
         print(f"Number of clones: {num_clone}")
         num_split = self.split_cycle(max_grad)

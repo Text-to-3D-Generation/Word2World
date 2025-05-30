@@ -318,7 +318,7 @@ class TriangleMesh:
     
     def save(self, path):
         if path.endswith(".ply"):
-            self.save_ply(path)
+            self.save_as_ply(path)
         elif path.endswith(".obj"):
             self.save_obj(path)
         elif path.endswith(".glb") or path.endswith(".gltf"):
@@ -326,7 +326,7 @@ class TriangleMesh:
         else:
             raise NotImplementedError(f"Format {path} not supported!")
     
-    def save_ply(self, path):
+    def save_as_ply(self, path):
         vertices_np = self.vertices.detach().cpu().numpy()
         faces_np = self.faces.detach().cpu().numpy()
 

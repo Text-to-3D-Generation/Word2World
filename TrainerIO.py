@@ -39,7 +39,7 @@ class TrainerIO:
     def save_model(
         renderer,
         path: str,
-        mode: int = 0,
+        model_type: int = 0,
         density_thresh: float = 0.01,
         texture_size: int = 1024,
         device: str = "cuda",
@@ -48,11 +48,11 @@ class TrainerIO:
     ) -> None:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         
-        if mode == 0:
+        if model_type == 0:
             TrainerIO._save_gaussian_model(renderer.gaussians_handler, path, compress)
-        elif mode == 1:
+        elif model_type == 1:
             TrainerIO._save_mesh(renderer, path, density_thresh, False, device)
-        elif mode == 2:
+        elif model_type == 2:
             TrainerIO._save_mesh(renderer, path, density_thresh, True, device, texture_size, camera)     
         print(f"[LOGS] Successfully saved model to {path}")
       
@@ -79,14 +79,14 @@ class TrainerIO:
             el = PlyElement.describe(vertex, 'vertex')
             PlyData([el], text=True).write(path)
         else:
-            gaussians.save_ply(path)
+            gaussians.save_as_ply(path)
 
     @staticmethod
     def _save_mesh(renderer, path: str, density_thresh: float, with_texture: bool, 
                   device: str, texture_size: int = 1024, camera=None):
         """Save extracted mesh with optional texture"""
         print(f"[INFO] Extracting mesh...")
-        mesh = renderer.gaussians_handler.extract_mesh_tetra(path, density_thresh)
+        mesh = renderer.gaussians_handler.extract_tetrahedral_mesh(path, density_thresh)
         
         if with_texture:
             print(f"[INFO] Generating texture...")
@@ -217,7 +217,7 @@ class TrainerIO:
             CC, 
             IW, IH)
         
-        rgb_img  = out["image"]                 # (3, H, W)
+        rgb_img  = out["image"].clamp(0, 1)                 # (3, H, W)
         H, W     = rgb_img.shape[-2:]           # read true resolution
         rgb_img  = rgb_img.unsqueeze(0)         # (1, 3, H, W)
 
