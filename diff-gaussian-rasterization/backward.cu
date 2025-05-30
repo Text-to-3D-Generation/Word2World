@@ -369,22 +369,15 @@ __device__ void computeCovarianceDerivatives(
     glm::vec3* dimension_derivs,
     glm::vec4* rotation_derivs)
 {
-    // Unpack quaternion components
     const float qw = rotation_quat.x;
     const float qx = rotation_quat.y;
     const float qy = rotation_quat.z;
     const float qz = rotation_quat.w;
-
-    // Compute auxiliary rotation terms
     const float xx = qx * qx, yy = qy * qy, zz = qz * qz;
     const float xy = qx * qy, xz = qx * qz, yz = qy * qz;
     const float xw = qx * qw, yw = qy * qw, zw = qz * qw;
-
-    // Construct scaled dimensions
     const glm::vec3 scaled_dims = scaling_factor * dimensions;
     const float sx = scaled_dims.x, sy = scaled_dims.y, sz = scaled_dims.z;
-
-    // Compute transformation matrix elements
     const float m11 = sx * (1.f - 2.f*(yy + zz));
     const float m12 = sx * 2.f*(xy - zw);
     const float m13 = sx * 2.f*(xz + yw);
@@ -397,12 +390,10 @@ __device__ void computeCovarianceDerivatives(
     const float m32 = sz * 2.f*(yz + xw);
     const float m33 = sz * (1.f - 2.f*(xx + yy));
 
-    // Extract covariance gradients
     const float* grad = incoming_grads + 6 * element_index;
     const float g11 = grad[0], g12 = grad[1], g13 = grad[2];
     const float g22 = grad[3], g23 = grad[4], g33 = grad[5];
 
-    // Compute intermediate products for gradient calculations
     const float a11 = 2.f * (m11*g11 + m12*g12 + m13*g13);
     const float a12 = 2.f * (m11*g12 + m12*g22 + m13*g23);
     const float a13 = 2.f * (m11*g13 + m12*g23 + m13*g33);
@@ -422,17 +413,12 @@ __device__ void computeCovarianceDerivatives(
     dim_deriv->z = 2.f*(xz - yw)*a31 + 2.f*(yz + xw)*a32 + (1.f - 2.f*(xx + yy))*a33;
 
     // Compute quaternion derivatives
-    const float dq0 = 4.f * (
-        -sz*(a31*yw - a32*xw + a33*xy) + 
-        sy*(a21*zw - a22*xz + a23*yy) + 
-        sx*(a12*zw - a13*yw - a11*yz)
-    );
+    const float dq0 = 4.f * (-sz*(a31*yw - a32*xw + a33*xy) + sy*(a21*zw - a22*xz + a23*yy)+ 
+    sx*(a12*zw - a13*yw - a11*yz));
 
-    const float dq1 = 4.f * (
-        sz*(a31*zw + a32*zz - a33*yz) - 
+    const float dq1 = 4.f * (sz*(a31*zw + a32*zz - a33*yz) - 
         sy*(a21*yw + a22*xy + a23*xx) + 
-        sx*(a12*yy + a13*zw + a11*xz)
-    );
+        sx*(a12*yy + a13*zw + a11*xz));
 
     const float dq2 = 4.f * (
         -sz*(a31*xx + a32*xw + a33*xz) + 
@@ -454,72 +440,160 @@ __device__ void computeCovarianceDerivatives(
 // Backward pass of the preprocessing steps, except
 // for the covariance computation and inversion
 // (those are handled by a previous kernel call)
-template<int C>
-__global__ void preprocessCUDA(
-	int P, int D, int M,
-	const float3* means,
-	const int* radii,
-	const float* shs,
-	const bool* clamped,
-	const glm::vec3* scales,
-	const glm::vec4* rotations,
-	const float scale_modifier,
-	const float* view,
-	const float* proj,
-	const glm::vec3* campos,
-	const float3* dL_dmean2D,
-	glm::vec3* dL_dmeans,
-	float* dL_dcolor,
-	float* dL_ddepth,
-	float* dL_dcov3D,
-	float* dL_dsh,
-	glm::vec3* dL_dscale,
-	glm::vec4* dL_drot)
+// template<int C>
+// __global__ void preprocessCUDA(
+// 	int P, int D, int M,
+// 	const float3* means,
+// 	const int* radii,
+// 	const float* shs,
+// 	const bool* clamped,
+// 	const glm::vec3* scales,
+// 	const glm::vec4* rotations,
+// 	const float scale_modifier,
+// 	const float* view,
+// 	const float* proj,
+// 	const glm::vec3* campos,
+// 	const float3* dL_dmean2D,
+// 	glm::vec3* dL_dmeans,
+// 	float* dL_dcolor,
+// 	float* dL_ddepth,
+// 	float* dL_dcov3D,
+// 	float* dL_dsh,
+// 	glm::vec3* dL_dscale,
+// 	glm::vec4* dL_drot)
+// {
+// 	auto idx = cg::this_grid().thread_rank();
+// 	if (idx >= P || !(radii[idx] > 0))
+// 		return;
+
+// 	float3 m = means[idx];
+
+// 	// Taking care of gradients from the screenspace points
+// 	float4 m_hom = transformPoint4x4(m, proj);
+// 	float m_w = 1.0f / (m_hom.w + 0.0000001f);
+
+// 	// Compute loss gradient w.r.t. 3D means due to gradients of 2D means
+// 	// from rendering procedure
+// 	glm::vec3 dL_dmean;
+// 	float mul1 = (proj[0] * m.x + proj[4] * m.y + proj[8] * m.z + proj[12]) * m_w * m_w;
+// 	float mul2 = (proj[1] * m.x + proj[5] * m.y + proj[9] * m.z + proj[13]) * m_w * m_w;
+// 	dL_dmean.x = (proj[0] * m_w - proj[3] * mul1) * dL_dmean2D[idx].x + (proj[1] * m_w - proj[3] * mul2) * dL_dmean2D[idx].y;
+// 	dL_dmean.y = (proj[4] * m_w - proj[7] * mul1) * dL_dmean2D[idx].x + (proj[5] * m_w - proj[7] * mul2) * dL_dmean2D[idx].y;
+// 	dL_dmean.z = (proj[8] * m_w - proj[11] * mul1) * dL_dmean2D[idx].x + (proj[9] * m_w - proj[11] * mul2) * dL_dmean2D[idx].y;
+
+// 	// That's the second part of the mean gradient. Previous computation
+// 	// of cov2D and following SH conversion also affects it.
+// 	dL_dmeans[idx] += dL_dmean;
+
+// 	// the w must be equal to 1 for view^T * [x,y,z,1]
+// 	float3 m_view = transformPoint4x3(m, view);
+
+// 	// Compute loss gradient w.r.t. 3D means due to gradients of depth
+// 	// from rendering procedure
+// 	glm::vec3 dL_dmean2;
+// 	float mul3 = view[2] * m.x + view[6] * m.y + view[10] * m.z + view[14];
+// 	dL_dmean2.x = (view[2] - view[3] * mul3) * dL_ddepth[idx];
+// 	dL_dmean2.y = (view[6] - view[7] * mul3) * dL_ddepth[idx];
+// 	dL_dmean2.z = (view[10] - view[11] * mul3) * dL_ddepth[idx];
+
+// 	// That's the third part of the mean gradient.
+// 	dL_dmeans[idx] += dL_dmean2;
+
+// 	// Compute gradient updates due to computing colors from SHs
+// 	if (shs)
+// 		computeColorFromSH(idx, D, M, (glm::vec3*)means, *campos, shs, clamped, (glm::vec3*)dL_dcolor, (glm::vec3*)dL_dmeans, (glm::vec3*)dL_dsh);
+
+// 	// Compute gradient updates due to computing covariance from scale/rotation
+// 	if (scales)
+// 		computeCovarianceDerivatives(idx, scales[idx], scale_modifier, rotations[idx], dL_dcov3D, dL_dscale, dL_drot);
+// }
+
+template<int SH_DEGREE>
+__global__ void backwardPreprocessingKernel(
+    int point_count,
+    int max_sh_degree,
+    int sh_coeff_count,
+    const float3* positions,
+    const int* visible_flags,
+    const float* sh_coefficients,
+    const bool* clamped_status,
+    const glm::vec3* scale_params,
+    const glm::vec4* rotation_params,
+    const float scale_adjustment,
+    const float* view_matrix,
+    const float* projection_matrix,
+    const glm::vec3* camera_origin,
+    const float3* screen_gradients,
+    glm::vec3* position_gradients,
+    float* color_gradients,
+    float* depth_gradients,
+    float* cov3D_gradients,
+    float* sh_gradients,
+    glm::vec3* scale_gradients,
+    glm::vec4* rotation_gradients)
 {
-	auto idx = cg::this_grid().thread_rank();
-	if (idx >= P || !(radii[idx] > 0))
-		return;
+    unsigned point_idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (point_idx >= point_count || visible_flags[point_idx] <= 0)
+        return;
 
-	float3 m = means[idx];
+    const float3 world_pos = positions[point_idx];
+    float4 clip_pos = {
+        projection_matrix[0] * world_pos.x + projection_matrix[4] * world_pos.y + projection_matrix[8] * world_pos.z + projection_matrix[12],
+        projection_matrix[1] * world_pos.x + projection_matrix[5] * world_pos.y + projection_matrix[9] * world_pos.z + projection_matrix[13],
+        projection_matrix[2] * world_pos.x + projection_matrix[6] * world_pos.y + projection_matrix[10] * world_pos.z + projection_matrix[14],
+        projection_matrix[3] * world_pos.x + projection_matrix[7] * world_pos.y + projection_matrix[11] * world_pos.z + projection_matrix[15]
+    };
 
-	// Taking care of gradients from the screenspace points
-	float4 m_hom = transformPoint4x4(m, proj);
-	float m_w = 1.0f / (m_hom.w + 0.0000001f);
+    float inv_w = 1.0f / (clip_pos.w + 1e-7f);
+    float inv_w_sq = inv_w * inv_w;
+    float proj_term_x = (projection_matrix[0] * world_pos.x + projection_matrix[4] * world_pos.y + 
+                        projection_matrix[8] * world_pos.z + projection_matrix[12]) * inv_w_sq;
+    float proj_term_y = (projection_matrix[1] * world_pos.x + projection_matrix[5] * world_pos.y + 
+                        projection_matrix[9] * world_pos.z + projection_matrix[13]) * inv_w_sq;
 
-	// Compute loss gradient w.r.t. 3D means due to gradients of 2D means
-	// from rendering procedure
-	glm::vec3 dL_dmean;
-	float mul1 = (proj[0] * m.x + proj[4] * m.y + proj[8] * m.z + proj[12]) * m_w * m_w;
-	float mul2 = (proj[1] * m.x + proj[5] * m.y + proj[9] * m.z + proj[13]) * m_w * m_w;
-	dL_dmean.x = (proj[0] * m_w - proj[3] * mul1) * dL_dmean2D[idx].x + (proj[1] * m_w - proj[3] * mul2) * dL_dmean2D[idx].y;
-	dL_dmean.y = (proj[4] * m_w - proj[7] * mul1) * dL_dmean2D[idx].x + (proj[5] * m_w - proj[7] * mul2) * dL_dmean2D[idx].y;
-	dL_dmean.z = (proj[8] * m_w - proj[11] * mul1) * dL_dmean2D[idx].x + (proj[9] * m_w - proj[11] * mul2) * dL_dmean2D[idx].y;
+    glm::vec3 screen_deriv = position_gradients[point_idx];
+    screen_deriv.x += (projection_matrix[0] * inv_w - projection_matrix[3] * proj_term_x) * screen_gradients[point_idx].x +
+                     (projection_matrix[1] * inv_w - projection_matrix[3] * proj_term_y) * screen_gradients[point_idx].y;
+    
+    screen_deriv.y += (projection_matrix[4] * inv_w - projection_matrix[7] * proj_term_x) * screen_gradients[point_idx].x +
+                     (projection_matrix[5] * inv_w - projection_matrix[7] * proj_term_y) * screen_gradients[point_idx].y;
+    
+    screen_deriv.z += (projection_matrix[8] * inv_w - projection_matrix[11] * proj_term_x) * screen_gradients[point_idx].x +
+                     (projection_matrix[9] * inv_w - projection_matrix[11] * proj_term_y) * screen_gradients[point_idx].y;
 
-	// That's the second part of the mean gradient. Previous computation
-	// of cov2D and following SH conversion also affects it.
-	dL_dmeans[idx] += dL_dmean;
+    float view_z = view_matrix[2] * world_pos.x + view_matrix[6] * world_pos.y + 
+                  view_matrix[10] * world_pos.z + view_matrix[14];
+    
+    float depth_deriv_scale = depth_gradients[point_idx];
+    screen_deriv.x += (view_matrix[2] - view_matrix[3] * view_z) * depth_deriv_scale;
+    screen_deriv.y += (view_matrix[6] - view_matrix[7] * view_z) * depth_deriv_scale;
+    screen_deriv.z += (view_matrix[10] - view_matrix[11] * view_z) * depth_deriv_scale;
 
-	// the w must be equal to 1 for view^T * [x,y,z,1]
-	float3 m_view = transformPoint4x3(m, view);
+    position_gradients[point_idx] = screen_deriv;
+    if (sh_coefficients != nullptr) {
+        computeColorFromSH(
+            point_idx,
+            max_sh_degree,
+            sh_coeff_count,
+            (const glm::vec3*)positions,
+            *camera_origin,
+            sh_coefficients,
+            clamped_status,
+            (glm::vec3*)color_gradients,
+            (glm::vec3*)position_gradients,
+            (glm::vec3*)sh_gradients);
+    }
 
-	// Compute loss gradient w.r.t. 3D means due to gradients of depth
-	// from rendering procedure
-	glm::vec3 dL_dmean2;
-	float mul3 = view[2] * m.x + view[6] * m.y + view[10] * m.z + view[14];
-	dL_dmean2.x = (view[2] - view[3] * mul3) * dL_ddepth[idx];
-	dL_dmean2.y = (view[6] - view[7] * mul3) * dL_ddepth[idx];
-	dL_dmean2.z = (view[10] - view[11] * mul3) * dL_ddepth[idx];
-
-	// That's the third part of the mean gradient.
-	dL_dmeans[idx] += dL_dmean2;
-
-	// Compute gradient updates due to computing colors from SHs
-	if (shs)
-		computeColorFromSH(idx, D, M, (glm::vec3*)means, *campos, shs, clamped, (glm::vec3*)dL_dcolor, (glm::vec3*)dL_dmeans, (glm::vec3*)dL_dsh);
-
-	// Compute gradient updates due to computing covariance from scale/rotation
-	if (scales)
-		computeCovarianceDerivatives(idx, scales[idx], scale_modifier, rotations[idx], dL_dcov3D, dL_dscale, dL_drot);
+    if (scale_params != nullptr) {
+        computeCovarianceDerivatives(
+            point_idx,
+            scale_params[point_idx],
+            scale_adjustment,
+            rotation_params[point_idx],
+            cov3D_gradients,
+            scale_gradients,
+            rotation_gradients);
+    }
 }
 
 // Backward version of the rendering procedure.
@@ -757,7 +831,7 @@ void BACKWARD::preprocess(
 	// Propagate gradients for remaining steps: finish 3D mean gradients,
 	// propagate color gradients to SH (if desireD), propagate 3D covariance
 	// matrix gradients to scale and rotation.
-	preprocessCUDA<NUM_CHANNELS> << < (P + 255) / 256, 256 >> > (
+	backwardPreprocessingKernel<NUM_CHANNELS> << < (P + 255) / 256, 256 >> > (
 		P, D, M,
 		(float3*)means3D,
 		radii,
