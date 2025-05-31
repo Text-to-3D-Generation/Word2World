@@ -5,10 +5,9 @@
 #include <glm/glm.hpp>
 
 void pixelGaussiansFull(
-    dim3 grid, dim3 block,
+ dim3 block,
        uint2* tileSliceStartEnd,
        uint32_t* MainGaussianIdArray,
-    //int W, int H,
        float2* means2D,
        float* colors,
        float* zDistances,
@@ -20,4 +19,4 @@ void pixelGaussiansFull(
        float3* covOP
 );
 
-#endif // PIXEL_GAUSSIANS_FULL_H
+#endif 
