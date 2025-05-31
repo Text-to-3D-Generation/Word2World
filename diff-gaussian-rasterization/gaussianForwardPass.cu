@@ -51,11 +51,11 @@ __device__ void evalSHDeg3(   glm::vec3& d,    glm::vec3* sphericalH, glm::vec3&
 //     int*              radss,
 //     uint32_t*         intersectedTiles
 // ) {
-//     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-//     if (idx >= numGaussians) return;
+//     int THREADID = blockIdx.x * blockDim.x + threadIdx.x;
+//     if (THREADID >= numGaussians) return;
 
-//     float3 covarianceMat = covOP[idx];
-//     float determinent = detOP[idx];
+//     float3 covarianceMat = covOP[THREADID];
+//     float determinent = detOP[THREADID];
 
 //     float mid = 0.5f * (covarianceMat.x + covarianceMat.z);
 //     float Y1 = mid + sqrtf(fmaxf(0.1f, mid * mid - determinent));
@@ -66,10 +66,10 @@ __device__ void evalSHDeg3(   glm::vec3& d,    glm::vec3* sphericalH, glm::vec3&
 //     float allProbRadius = 3.f * sqrtf(YMAX);
 
 //     // Early exit on low opacity
-//     float opacity = gaussianAlphas[idx];
+//     float opacity = gaussianAlphas[THREADID];
 //     if (opacity <= 0.0039f) {
-//         radss[idx] = 0;
-//         intersectedTiles[idx] = 0;
+//         radss[THREADID] = 0;
+//         intersectedTiles[THREADID] = 0;
 //         return;
 //     }
 
@@ -81,9 +81,9 @@ __device__ void evalSHDeg3(   glm::vec3& d,    glm::vec3* sphericalH, glm::vec3&
 //     r_y = fminf(r_y, allProbRadius);
 
 //     // Keep old interface: write max(r_x, r_y) to radss
-//     radss[idx] = ceilf(fmaxf(r_x, r_y));
+//     radss[THREADID] = ceilf(fmaxf(r_x, r_y));
 
-//     float2 p = muu2dPixelCoord[idx];
+//     float2 p = muu2dPixelCoord[THREADID];
 
 //     // Tile rectangle [min, max)
 //     int2 tmin = make_int2(
@@ -102,7 +102,7 @@ __device__ void evalSHDeg3(   glm::vec3& d,    glm::vec3* sphericalH, glm::vec3&
 //         min(grid.x, tmax.x), min(grid.y, tmax.y)
 //     );
 
-//     intersectedTiles[idx] = (rect_max.x - rect_min.x) * (rect_max.y - rect_min.y);
+//     intersectedTiles[THREADID] = (rect_max.x - rect_min.x) * (rect_max.y - rect_min.y);
 // }
 
 
@@ -119,11 +119,11 @@ __device__ void evalSHDeg3(   glm::vec3& d,    glm::vec3* sphericalH, glm::vec3&
 //     int*              ry,            // AABB height radius
 //     uint32_t*         intersectedTiles
 // ) {
-//     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-//     if (idx >= numGaussians) return;
+//     int THREADID = blockIdx.x * blockDim.x + threadIdx.x;
+//     if (THREADID >= numGaussians) return;
 
-//     float3 covarianceMat = covOP[idx];
-//     float determinent = detOP[idx];
+//     float3 covarianceMat = covOP[THREADID];
+//     float determinent = detOP[THREADID];
 
 //     float mid = 0.5f * (covarianceMat.x + covarianceMat.z);
 //     float Y1 = mid + sqrtf(fmaxf(0.1f, mid * mid - determinent));
@@ -131,13 +131,13 @@ __device__ void evalSHDeg3(   glm::vec3& d,    glm::vec3* sphericalH, glm::vec3&
 //     float YMAX = fmaxf(Y1, Y2);
 
 //     float allProbRadius = 3.f * sqrtf(YMAX);
-//     float opacity = gaussianAlphas[idx];
+//     float opacity = gaussianAlphas[THREADID];
 
 //     if (opacity <= 0.0039f) {
-//         radss[idx]        = 0;
-//         rx[idx]      = 0;
-//         ry[idx]      = 0;
-//         intersectedTiles[idx]= 0;
+//         radss[THREADID]        = 0;
+//         rx[THREADID]      = 0;
+//         ry[THREADID]      = 0;
+//         intersectedTiles[THREADID]= 0;
 //         return;
 //     }
 
@@ -147,11 +147,11 @@ __device__ void evalSHDeg3(   glm::vec3& d,    glm::vec3* sphericalH, glm::vec3&
 //     r_x = fminf(r_x, allProbRadius);
 //     r_y = fminf(r_y, allProbRadius);
 
-//     rx[idx] = ceilf(r_x);
-//     ry[idx] = ceilf(r_y);
-//     radss[idx]   = ceilf(fmaxf(r_x, r_y));  // preserve old interface behavior
+//     rx[THREADID] = ceilf(r_x);
+//     ry[THREADID] = ceilf(r_y);
+//     radss[THREADID]   = ceilf(fmaxf(r_x, r_y));  // preserve old interface behavior
 
-//     float2 p = muu2dPixelCoord[idx];
+//     float2 p = muu2dPixelCoord[THREADID];
 //     int2 tmin = make_int2(
 //         int((p.x - r_x) / 16.0f),
 //         int((p.y - r_y) / 16.0f)
@@ -164,7 +164,7 @@ __device__ void evalSHDeg3(   glm::vec3& d,    glm::vec3* sphericalH, glm::vec3&
 //     uint2 rect_min = make_uint2(max(0, tmin.x), max(0, tmin.y));
 //     uint2 rect_max = make_uint2(min(grid.x, tmax.x), min(grid.y, tmax.y));
 
-//     intersectedTiles[idx] = (rect_max.x - rect_min.x) * (rect_max.y - rect_min.y);
+//     intersectedTiles[THREADID] = (rect_max.x - rect_min.x) * (rect_max.y - rect_min.y);
 // }
 
 //we want to compute rgb for each Gaussian
@@ -184,17 +184,17 @@ float*      rgb           // length numGaussians*3
 
 
 {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx >= numGaussians)
+    int THREADID = blockIdx.x * blockDim.x + threadIdx.x;
+    if (THREADID >= numGaussians)
     { 
         //printf("no sphericalH !");
         return;
     }
 
 
-    glm::vec3 meanToCam = glm::normalize(glm::make_vec3(&DefaultPoints[3 * idx]) - *positionOfCamera);
+    glm::vec3 meanToCam = glm::normalize(glm::make_vec3(&DefaultPoints[3 * THREADID]) - *positionOfCamera);
 
-    glm::vec3* sphericalH = ((glm::vec3*)sphericalHarmonics) + idx * M;
+    glm::vec3* sphericalH = ((glm::vec3*)sphericalHarmonics) + THREADID * M;
     
     glm::vec3 resFina = 0.28209479177387814f * sphericalH[0];
     
@@ -221,7 +221,7 @@ float*      rgb           // length numGaussians*3
     
 
 
-int baseIndex = 3 * idx;
+int baseIndex = 3 * THREADID;
 
 if (resFina.x < 0.0f) {
     backwardBoolean[baseIndex + 0] = true;
@@ -257,7 +257,7 @@ else {
     glm::vec3 finaleCo = glm::max(resFina, 0.0f);
     
 
-    float* base = &rgb[idx * 3];
+    float* base = &rgb[THREADID * 3];
     glm::vec3* rgb_out = reinterpret_cast<glm::vec3*>(base);
     //final col
 *rgb_out = resFina;
