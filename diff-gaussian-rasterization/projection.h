@@ -9,14 +9,13 @@
 
 namespace PROJECTION 
 {
-
 void ProjectG(
     int numGaussians,
        float* means3D,
        glm::vec3* scales,
        glm::vec4* orientationss,
        float* matViewCam,
-       float cameraFLenHorz, float cameraFLenVert,
+       float cameraFLenHorz,
     float* covvarance3D,
     int* radss,
     uint32_t* intersectedTiles,
@@ -32,4 +31,4 @@ void ProjectG(
 
 }
 
-#endif // PROJECT_G_H_INCLUDED
+#endif
