@@ -74,8 +74,7 @@ RasterizeGaussiansCUDA(
       }
 
 	  rendered = gaussianForwardPass(
-    out_alpha.contiguous().data<float>(),              
-    focal_y,                                           
+    out_alpha.contiguous().data<float>(),                                                      
     imgFunc,                                           
     radii.contiguous().data<int>(),                  
     rotations.contiguous().data_ptr<float>(),         
@@ -123,7 +122,7 @@ RasterizeGaussiansBackwardCUDA(
 	const torch::Tensor& geomBuffer,
 	const int R,
 	const torch::Tensor& binningBuffer,
-	const torch::Tensor& imageBuffer,
+	const torch::Tensor& finalOutt,
 	const torch::Tensor& alphas,
 	const bool debug) 
 {
@@ -169,7 +168,7 @@ RasterizeGaussiansBackwardCUDA(
 	  radii.contiguous().data<int>(),
 	  reinterpret_cast<char*>(geomBuffer.contiguous().data_ptr()),
 	  reinterpret_cast<char*>(binningBuffer.contiguous().data_ptr()),
-	  reinterpret_cast<char*>(imageBuffer.contiguous().data_ptr()),
+	  reinterpret_cast<char*>(finalOutt.contiguous().data_ptr()),
 	  dL_dout_color.contiguous().data<float>(),
 	  dL_dout_depth.contiguous().data<float>(),
 	  dL_dout_alpha.contiguous().data<float>(),

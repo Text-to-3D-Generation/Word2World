@@ -21,7 +21,8 @@ setup(
             "pixelGaussiansFull.cu",
             "gaussianTiles.cu",
             "prepareSort.cu",
-            #"cuda_rasterizer/colCal.cu",
+            #"colCal.cu",
+            "gradientPass.cu",
             "ext.cpp"],
             extra_compile_args={"nvcc": ["-I" + os.path.join(os.path.dirname(os.path.abspath(__file__)), "GLMLibrary/")]})
         ],

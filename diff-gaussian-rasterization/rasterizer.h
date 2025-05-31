@@ -5,9 +5,8 @@
 #include <functional>
 
 int gaussianForwardPass(
-    float* opacityOP,                                           
-   float cameraFLenVert,                                  
-    std::function<char* (size_t)> imageBuffer,                  
+    float* opacityOP,                                                                        
+    std::function<char* (size_t)> finalOutt,                  
     int* radss,                                                 
   float* orientationss,                                
      int numGaussians,                                     

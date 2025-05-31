@@ -44,7 +44,7 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Te
 	const torch::Tensor& geomBuffer,
 	const int R,
 	const torch::Tensor& binningBuffer,
-	const torch::Tensor& imageBuffer,
+	const torch::Tensor& finalOutt,
 	const torch::Tensor& alpha,
 	const bool debug);
 		
