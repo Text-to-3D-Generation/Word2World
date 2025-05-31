@@ -17,7 +17,6 @@ void tileCulling(
        float3* __restrict__ covOP,
        float* __restrict__ detOP,
        float2* __restrict__ means2D,
-    dim3 grid,
     int* __restrict__ radss,
     uint32_t* __restrict__ intersectedTiles
 );

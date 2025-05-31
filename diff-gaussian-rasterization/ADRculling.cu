@@ -10,15 +10,14 @@ __global__ void tileCullingCUDA(
       float3*     covOP, // covariance matrix of Gaussians!
       float*      detOP, //deteerminants
       float2*     muu2dPixelCoord, //2d means
-    dim3              grid,           // number of 16×16 tiles in x/y
           int*         radss, //radiuses,, will put to zero if want to cull
     uint32_t*         intersectedTiles //finale
 ) 
 {
        //linear index for the current Gaussian
-      int idx = blockIdx.x * blockDim.x + threadIdx.x;
+      int THREADID = blockIdx.x * blockDim.x + threadIdx.x;
     // If the index exceeds the number of Gaussians, exit early
-      if (idx >= numGaussians)
+      if (THREADID >= numGaussians)
     {   
         //printf("OOOOOOUUUUTTTTTTYYYYYYY\n");
 
@@ -31,10 +30,10 @@ __global__ void tileCullingCUDA(
     
     
     
-    float3 covarianceMat = covOP[idx];
+    float3 covarianceMat = covOP[THREADID];
     
     
-    float determinant = detOP[idx];
+    float determinant = detOP[THREADID];
 
     // Compute eigenvalues Y! and Y2 of the covariance matrix
     float trace = covarianceMat.x + covarianceMat.z;
@@ -54,35 +53,37 @@ float YMMAX = fmaxf(Y1, Y2);  // Always take the max
     //so if the gaussian has alpha low just ignore it
     
     
-    if (
+    if 
+    
+    (
         
-           gaussianAlphas[idx] <= 0.0039f) {
-        radss[idx] = 0;
-            intersectedTiles[idx] = 0;
+           gaussianAlphas[THREADID] <= 0.0039f) {
+        radss[THREADID] = 0;
+            intersectedTiles[THREADID] = 0;
         return;
     }
 
     //adaptiveRadius equation
     
     
-    float lnRatio = logf(gaussianAlphas[idx] * 255.0f);  // α_low = 1/255
+    float lnRatio = logf(gaussianAlphas[THREADID] * 255.0f);  // α_low = 1/255
          float adaptiveRadius = sqrtf(2.f * YMMAX * lnRatio);
 
     //pick min, math thingy
     float minRad = fminf(adaptiveRadius, allProbRadius);
 
     //radius will definetly be integer since pixel and such 
-    radss[idx] = ceilf(minRad);
+    radss[THREADID] = ceilf(minRad);
 
    //boundings in tile space
         int2 tmin = make_int2(
-         int((muu2dPixelCoord[idx].x - minRad) / 16.0f),
-int((muu2dPixelCoord[idx].y - minRad) / 16.0f)
+         int((muu2dPixelCoord[THREADID].x - minRad) / 16.0f),
+int((muu2dPixelCoord[THREADID].y - minRad) / 16.0f)
     );
     int2 tmax = make_int2(
         
-            int((muu2dPixelCoord[idx].x + minRad + 15) / 16.0f),
-int((muu2dPixelCoord[idx].y + minRad + 15) / 16.0f)
+            int((muu2dPixelCoord[THREADID].x + minRad + 15) / 16.0f),
+int((muu2dPixelCoord[THREADID].y + minRad + 15) / 16.0f)
     );
 
    //do not go out of screen, else the ghost error
@@ -93,11 +94,9 @@ int((muu2dPixelCoord[idx].y + minRad + 15) / 16.0f)
              max(0, tmin.y)
     );
     uint2 rect_max = make_uint2(
-        min(grid.x, 
+        min(50, 
             
-            tmax.x),  min(grid.y,
-                
-                tmax.y)
+            tmax.x),  min(50,tmax.y)
     );
 
     //total tiles = total vert * total hor
@@ -105,7 +104,7 @@ int((muu2dPixelCoord[idx].y + minRad + 15) / 16.0f)
     uint32_t totHorz  = rect_max.x - rect_min.x;
 
         uint32_t totvert= rect_max.y - rect_min.y;
-intersectedTiles[idx] = totHorz * totvert;
+intersectedTiles[THREADID] = totHorz * totvert;
 
 }
 
@@ -118,7 +117,6 @@ namespace ADR {
           float3* covOP,
           float* detOP,
                     float2* means2D,
-          dim3   grid,
                     int*         radss,
 uint32_t*    intersectedTiles
     ) {
@@ -131,7 +129,6 @@ tileCullingCUDA<<<(numGaussians + 255) / 256, 256>>>(
     detOP,
     means2D ,
             
-         grid,
     radss,
             intersectedTiles
         );
