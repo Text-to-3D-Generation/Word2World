@@ -4,6 +4,6 @@
 #include <cuda_runtime.h>
 #include <stdint.h>
 
-__global__ void gaussianTiles(int L, uint64_t* keysArray, uint2* tileSliceStartEnd);
+__global__ void gaussianTiles( uint64_t* keysArray, uint2* tileSliceStartEnd,int totRender);
 
-#endif // GAUSSIAN_TILES_H_INCLUDED
+#endif 
