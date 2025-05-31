@@ -53,18 +53,18 @@ __global__ void computeSHColorCUDA(
           float*      rgb           // length numGaussians*C
 ) {
     int C = 3;
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx >= numGaussians) return;
+    int THREADID = blockIdx.x * blockDim.x + threadIdx.x;
+    if (THREADID >= numGaussians) return;
 
     // computeColorFromSH signature:
-    // glm::vec3 computeColorFromSH(int idx, int shNum, int M,
+    // glm::vec3 computeColorFromSH(int THREADID, int shNum, int M,
     //                                 glm::vec3* pts,
     //                              glm::vec3 cam,
     //                                 float* sphericalHarmonics,
     //                                 bool* clamped);
-    glm::vec3 dir = glm::normalize(glm::make_vec3(&DefaultPoints[3 * idx]) - *positionOfCamera);
+    glm::vec3 dir = glm::normalize(glm::make_vec3(&DefaultPoints[3 * THREADID]) - *positionOfCamera);
 
-    glm::vec3* sh = ((glm::vec3*)sphericalHarmonics) + idx * M;
+    glm::vec3* sh = ((glm::vec3*)sphericalHarmonics) + THREADID * M;
     
     glm::vec3 result = SH_C0 * sh[0];
     
@@ -74,14 +74,14 @@ __global__ void computeSHColorCUDA(
     
     result += 0.5f;
     
-    clamped[3 * idx + 0] = (result.x < 0.0f);
-    clamped[3 * idx + 1] = (result.y < 0.0f);
-    clamped[3 * idx + 2] = (result.z < 0.0f);
+    clamped[3 * THREADID + 0] = (result.x < 0.0f);
+    clamped[3 * THREADID + 1] = (result.y < 0.0f);
+    clamped[3 * THREADID + 2] = (result.z < 0.0f);
     
     glm::vec3 final_color = glm::max(result, 0.0f);
     
 
-    float* base = &rgb[idx * C];
+    float* base = &rgb[THREADID * C];
     glm::vec3* rgb_out = reinterpret_cast<glm::vec3*>(base);
     *rgb_out = result;
     
