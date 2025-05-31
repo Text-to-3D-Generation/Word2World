@@ -4,7 +4,7 @@
 #include <cuda_runtime.h>
 #include <device_functions.h>  // For expf
 
-__device__ __forceinline__ float EvaluateGaussFunction
+__device__ __forceinline__ float functionEXP
 (
        float2 mu, 
        float3 covarianceMat, 
@@ -14,7 +14,7 @@ __device__ __forceinline__ float EvaluateGaussFunction
     float cov_xy = covarianceMat.y;
     float cov_yy = covarianceMat.z;
     float determinent = cov_xx * cov_yy - cov_xy * cov_xy;
-
+    //vector from mean to point 
     float dx = queryPoint.x - mu.x;
     float dy = queryPoint.y - mu.y;
 
