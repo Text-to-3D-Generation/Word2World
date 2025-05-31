@@ -4,7 +4,7 @@ import numpy as np
 from typing import List, Optional, Dict, Union
 from PointE import PointEModel
 from gaussians_handler import GaussiansHandler
-from diff_gaussian_rasterization import _C 
+from cudaForwardBackwardRenderer import _C 
 import torch
 from typing import Tuple
 

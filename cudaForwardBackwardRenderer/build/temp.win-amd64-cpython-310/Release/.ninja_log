@@ -1,0 +1,12 @@
+# ninja log v5
+26	1272	7703586784478164	C:/Users/basel/Desktop/dream gauss/final/Word2World/cudaForwardBackwardRenderer/build/temp.win-amd64-cpython-310/Release/gaussianTiles.obj	2897facac2e32477
+37	1834	7703586790108168	C:/Users/basel/Desktop/dream gauss/final/Word2World/cudaForwardBackwardRenderer/build/temp.win-amd64-cpython-310/Release/pixelGaussiansFull.obj	8f388831dbd33d18
+41	4814	7703586819743402	C:/Users/basel/Desktop/dream gauss/final/Word2World/cudaForwardBackwardRenderer/build/temp.win-amd64-cpython-310/Release/prepareSort.obj	4ad96e8d3bc03ad8
+6	5473	7703586826277441	C:/Users/basel/Desktop/dream gauss/final/Word2World/cudaForwardBackwardRenderer/build/temp.win-amd64-cpython-310/Release/backward.obj	34854a47b339844
+10	31350	7703587085019308	C:/Users/basel/Desktop/dream gauss/final/Word2World/cudaForwardBackwardRenderer/build/temp.win-amd64-cpython-310/Release/ext.obj	7871475081c177e7
+2	82647	7703587596789595	C:/Users/basel/Desktop/dream gauss/final/Word2World/cudaForwardBackwardRenderer/build/temp.win-amd64-cpython-310/Release/ADRculling.obj	66a05e1486722f00
+56	86120	7703587631951548	C:/Users/basel/Desktop/dream gauss/final/Word2World/cudaForwardBackwardRenderer/build/temp.win-amd64-cpython-310/Release/rasterize_points.obj	eadb3b7160cd49fe
+14	88124	7703587652098587	C:/Users/basel/Desktop/dream gauss/final/Word2World/cudaForwardBackwardRenderer/build/temp.win-amd64-cpython-310/Release/gaussianForwardPass.obj	707c8c73e30e0d7b
+51	88857	7703587659470795	C:/Users/basel/Desktop/dream gauss/final/Word2World/cudaForwardBackwardRenderer/build/temp.win-amd64-cpython-310/Release/projection.obj	65ba099802479093
+21	102823	7703587799058511	C:/Users/basel/Desktop/dream gauss/final/Word2World/cudaForwardBackwardRenderer/build/temp.win-amd64-cpython-310/Release/gaussianRasterizer.obj	8b0765ae5eab3727
+31	103996	7703587810738458	C:/Users/basel/Desktop/dream gauss/final/Word2World/cudaForwardBackwardRenderer/build/temp.win-amd64-cpython-310/Release/gradientPass.obj	55d06394578fa3a9
