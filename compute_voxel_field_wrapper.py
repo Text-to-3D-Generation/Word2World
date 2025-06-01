@@ -31,9 +31,7 @@ def load_cuda_library():
         if lib_path is None:
             raise FileNotFoundError(
                 f"CUDA library {lib_name} not found. Searched in:\n" + 
-                "\n".join(f"  - {path}" for path in possible_paths) +
-                "\n\nPlease compile it using:\n" +
-                "nvcc -O3 -shared -o compute_voxel_field.dll compute_voxel_field.cu"
+                "\n".join(f"  - {path}" for path in possible_paths)
             )
         
         try:
@@ -56,8 +54,7 @@ def load_cuda_library():
         
         if lib_path is None:
             raise FileNotFoundError(
-                f"CUDA library {lib_name} not found. Please compile it using:\n" +
-                "nvcc -O3 -shared -Xcompiler -fPIC -o compute_voxel_field.so compute_voxel_field.cu"
+                f"CUDA library {lib_name} not found.\n"
             )
         
         lib = ctypes.CDLL(lib_path)
