@@ -2,7 +2,6 @@
 #define BLOCK_Y 16
 #define NUM_CHANNELS 3
 #define BLOCK_SIZE 256
-
 #include "backward.h"
 #include <cooperative_groups.h>
 #include <cooperative_groups/reduce.h>
@@ -25,156 +24,6 @@ __device__ const float SH_C3[] = {
 	1.445305721320277f,
 	-0.5900435899266435f
 };
-__device__ void computeColorFromSH(int idx, int deg, int max_coeffs, const glm::vec3* means, glm::vec3 campos, const float* shs, const bool* clamped, const glm::vec3* dL_dcolor, glm::vec3* dL_dmeans, glm::vec3* dL_dshs)
-{
-	glm::vec3 gaussian_center = means[idx];
-	float offset_x = gaussian_center.x - campos.x;
-	float offset_y = gaussian_center.y - campos.y;
-	float offset_z = gaussian_center.z - campos.z;
-	
-	glm::vec3 raw_direction(offset_x, offset_y, offset_z);
-	
-	float mag_squared = offset_x * offset_x + offset_y * offset_y + offset_z * offset_z;
-	float mag = sqrtf(mag_squared + 1e-10f);
-	float inv_mag = 1.0f / mag;
-	
-	float dir_x = offset_x * inv_mag;
-	float dir_y = offset_y * inv_mag;
-	float dir_z = offset_z * inv_mag;
-	
-	float x2 = dir_x * dir_x;
-	float y2 = dir_y * dir_y;
-	float z2 = dir_z * dir_z;
-	float xy = dir_x * dir_y;
-	float xz = dir_x * dir_z;
-	float yz = dir_y * dir_z;
-	float x2_minus_y2 = x2 - y2;
-	float three_x2 = 3.0f * x2;
-	float three_y2 = 3.0f * y2;
-	float four_z2 = 4.0f * z2;
-	float two_z2 = 2.0f * z2;
-	
-	glm::vec3 clamp_factors(
-		clamped[3 * idx + 0] ? 0.0f : 1.0f,
-		clamped[3 * idx + 1] ? 0.0f : 1.0f,
-		clamped[3 * idx + 2] ? 0.0f : 1.0f
-	);
-	
-	glm::vec3 clamped_dL_dRGB = dL_dcolor[idx] * clamp_factors;
-	
-	glm::vec3* sh_data = ((glm::vec3*)shs) + idx * max_coeffs;
-	glm::vec3* gradient_sh = dL_dshs + idx * max_coeffs;
-	
-	float basis_functions[16];
-	basis_functions[0] = SH_C0;
-	basis_functions[1] = -SH_C1 * dir_y;
-	basis_functions[2] = SH_C1 * dir_z;
-	basis_functions[3] = -SH_C1 * dir_x;
-	basis_functions[4] = SH_C2[0] * xy;
-	basis_functions[5] = SH_C2[1] * yz;
-	basis_functions[6] = SH_C2[2] * (two_z2 - x2 - y2);
-	basis_functions[7] = SH_C2[3] * xz;
-	basis_functions[8] = SH_C2[4] * x2_minus_y2;
-	basis_functions[9] = SH_C3[0] * dir_y * (three_x2 - y2);
-	basis_functions[10] = SH_C3[1] * xy * dir_z;
-	basis_functions[11] = SH_C3[2] * dir_y * (four_z2 - x2 - y2);
-	basis_functions[12] = SH_C3[3] * dir_z * (two_z2 - three_x2 - three_y2);
-	basis_functions[13] = SH_C3[4] * dir_x * (four_z2 - x2 - y2);
-	basis_functions[14] = SH_C3[5] * dir_z * x2_minus_y2;
-	basis_functions[15] = SH_C3[6] * dir_x * (x2 - three_y2);
-	
-	for (int i = 0; i < 16; ++i) {
-		gradient_sh[i] = basis_functions[i] * clamped_dL_dRGB;
-	}
-	
-	glm::vec3 accumulated_gradient(0.0f, 0.0f, 0.0f);
-	
-	accumulated_gradient.x -= SH_C1 * glm::dot(sh_data[3], clamped_dL_dRGB);
-	accumulated_gradient.y -= SH_C1 * glm::dot(sh_data[1], clamped_dL_dRGB);
-	accumulated_gradient.z += SH_C1 * glm::dot(sh_data[2], clamped_dL_dRGB);
-	
-	glm::vec3 deg2_contrib_x(
-		SH_C2[0] * dir_y * sh_data[4] + 
-		SH_C2[2] * (-2.0f * dir_x) * sh_data[6] + 
-		SH_C2[3] * dir_z * sh_data[7] + 
-		SH_C2[4] * (2.0f * dir_x) * sh_data[8]
-	);
-	
-	glm::vec3 deg2_contrib_y(
-		SH_C2[0] * dir_x * sh_data[4] + 
-		SH_C2[1] * dir_z * sh_data[5] + 
-		SH_C2[2] * (-2.0f * dir_y) * sh_data[6] + 
-		SH_C2[4] * (-2.0f * dir_y) * sh_data[8]
-	);
-	
-	glm::vec3 deg2_contrib_z(
-		SH_C2[1] * dir_y * sh_data[5] + 
-		SH_C2[2] * (4.0f * dir_z) * sh_data[6] + 
-		SH_C2[3] * dir_x * sh_data[7]
-	);
-	
-	accumulated_gradient.x += glm::dot(deg2_contrib_x, clamped_dL_dRGB);
-	accumulated_gradient.y += glm::dot(deg2_contrib_y, clamped_dL_dRGB);
-	accumulated_gradient.z += glm::dot(deg2_contrib_z, clamped_dL_dRGB);
-	
-	float deg3_factors_x[7] = {
-		SH_C3[0] * 6.0f * xy,
-		SH_C3[1] * yz,
-		SH_C3[2] * (-2.0f * xy),
-		SH_C3[3] * (-6.0f * xz),
-		SH_C3[4] * (four_z2 - 3.0f * x2 - y2),
-		SH_C3[5] * 2.0f * xz,
-		SH_C3[6] * 3.0f * x2_minus_y2
-	};
-	
-	float deg3_factors_y[7] = {
-		SH_C3[0] * 3.0f * (x2 - y2),
-		SH_C3[1] * xz,
-		SH_C3[2] * (four_z2 - 3.0f * y2 - x2),
-		SH_C3[3] * (-6.0f * yz),
-		SH_C3[4] * (-2.0f * xy),
-		SH_C3[5] * (-2.0f * yz),
-		SH_C3[6] * (-6.0f * xy)
-	};
-	
-	float deg3_factors_z[7] = {
-		0.0f,
-		SH_C3[1] * xy,
-		SH_C3[2] * 8.0f * yz,
-		SH_C3[3] * 3.0f * (two_z2 - x2 - y2),
-		SH_C3[4] * 8.0f * xz,
-		SH_C3[5] * x2_minus_y2,
-		0.0f
-	};
-	
-	glm::vec3 deg3_x(0.0f), deg3_y(0.0f), deg3_z(0.0f);
-	for (int i = 0; i < 7; ++i) {
-		deg3_x += deg3_factors_x[i] * sh_data[9 + i];
-		deg3_y += deg3_factors_y[i] * sh_data[9 + i];
-		deg3_z += deg3_factors_z[i] * sh_data[9 + i];
-	}
-	
-	accumulated_gradient.x += glm::dot(deg3_x, clamped_dL_dRGB);
-	accumulated_gradient.y += glm::dot(deg3_y, clamped_dL_dRGB);
-	accumulated_gradient.z += glm::dot(deg3_z, clamped_dL_dRGB);
-	
-	float inv_mag_cubed = inv_mag * inv_mag * inv_mag;
-	
-	glm::mat3 outer_prod(
-		raw_direction.x * raw_direction.x, raw_direction.x * raw_direction.y, raw_direction.x * raw_direction.z,
-		raw_direction.y * raw_direction.x, raw_direction.y * raw_direction.y, raw_direction.y * raw_direction.z,
-		raw_direction.z * raw_direction.x, raw_direction.z * raw_direction.y, raw_direction.z * raw_direction.z
-	);
-	
-	glm::mat3 scaled_I = glm::mat3(mag_squared);
-	
-	glm::mat3 jacobian = (scaled_I - outer_prod) * inv_mag_cubed;
-	
-	glm::vec3 final_mean_gradient = jacobian * accumulated_gradient;
-	
-	dL_dmeans[idx] += final_mean_gradient;
-}
-
 __global__ void computeCov2DCUDA(int P,
 	const float3* means,
 	const int* radii,
@@ -377,154 +226,6 @@ __global__ void computeCov2DCUDA(int P,
 	dL_dmeans[idx] = world_grad;
 }
 
-__device__ void computeCovarianceDerivatives(
-    int element_index,
-    const glm::vec3 dimensions,
-    float scaling_factor,
-    const glm::vec4 rotation_quat,
-    const float* incoming_grads,
-    glm::vec3* dimension_derivs,
-    glm::vec4* rotation_derivs)
-{
-    const float qw = rotation_quat.x;
-    const float qx = rotation_quat.y;
-    const float qy = rotation_quat.z;
-    const float qz = rotation_quat.w;
-    const float xx = qx * qx, yy = qy * qy, zz = qz * qz;
-    const float xy = qx * qy, xz = qx * qz, yz = qy * qz;
-    const float xw = qx * qw, yw = qy * qw, zw = qz * qw;
-    const glm::vec3 scaled_dims = scaling_factor * dimensions;
-    const float sx = scaled_dims.x, sy = scaled_dims.y, sz = scaled_dims.z;
-    const float m11 = sx * (1.f - 2.f*(yy + zz));
-    const float m12 = sx * 2.f*(xy - zw);
-    const float m13 = sx * 2.f*(xz + yw);
-    
-    const float m21 = sy * 2.f*(xy + zw);
-    const float m22 = sy * (1.f - 2.f*(xx + zz));
-    const float m23 = sy * 2.f*(yz - xw);
-    
-    const float m31 = sz * 2.f*(xz - yw);
-    const float m32 = sz * 2.f*(yz + xw);
-    const float m33 = sz * (1.f - 2.f*(xx + yy));
-
-    const float* grad = incoming_grads + 6 * element_index;
-    const float g11 = grad[0], g12 = grad[1], g13 = grad[2];
-    const float g22 = grad[3], g23 = grad[4], g33 = grad[5];
-
-    const float a11 = 2.f * (m11*g11 + m12*g12 + m13*g13);
-    const float a12 = 2.f * (m11*g12 + m12*g22 + m13*g23);
-    const float a13 = 2.f * (m11*g13 + m12*g23 + m13*g33);
-    
-    const float a21 = 2.f * (m21*g11 + m22*g12 + m23*g13);
-    const float a22 = 2.f * (m21*g12 + m22*g22 + m23*g23);
-    const float a23 = 2.f * (m21*g13 + m22*g23 + m23*g33);
-    
-    const float a31 = 2.f * (m31*g11 + m32*g12 + m33*g13);
-    const float a32 = 2.f * (m31*g12 + m32*g22 + m33*g23);
-    const float a33 = 2.f * (m31*g13 + m32*g23 + m33*g33);
-
-    // Compute dimension derivatives
-    glm::vec3* dim_deriv = dimension_derivs + element_index;
-    dim_deriv->x = (1.f - 2.f*(yy + zz))*a11 + 2.f*(xy - zw)*a12 + 2.f*(xz + yw)*a13;
-    dim_deriv->y = 2.f*(xy + zw)*a21 + (1.f - 2.f*(xx + zz))*a22 + 2.f*(yz - xw)*a23;
-    dim_deriv->z = 2.f*(xz - yw)*a31 + 2.f*(yz + xw)*a32 + (1.f - 2.f*(xx + yy))*a33;
-
-    // Compute quaternion derivatives
-    const float dq0 = 4.f * (-sz*(a31*yw - a32*xw + a33*xy) + sy*(a21*zw - a22*xz + a23*yy)+ 
-    sx*(a12*zw - a13*yw - a11*yz));
-
-    const float dq1 = 4.f * (sz*(a31*zw + a32*zz - a33*yz) - 
-        sy*(a21*yw + a22*xy + a23*xx) + 
-        sx*(a12*yy + a13*zw + a11*xz));
-
-    const float dq2 = 4.f * (
-        -sz*(a31*xx + a32*xw + a33*xz) + 
-        sy*(a21*zw + a22*yy + a23*yw) - 
-        sx*(a12*xw + a13*xx + a11*xy)
-    );
-
-    const float dq3 = 4.f * (
-        sz*(a31*xw - a32*xx + a33*xy) - 
-        sy*(a21*xz - a22*zw + a23*yz) + 
-        sx*(a12*yz - a13*zz + a11*yy)
-    );
-
-    // Store rotation derivatives
-    float4* rot_deriv = (float4*)(rotation_derivs + element_index);
-    *rot_deriv = float4{dq0, dq1, dq2, dq3};
-}
-
-// Backward pass of the preprocessing steps, except
-// for the covariance computation and inversion
-// (those are handled by a previous kernel call)
-// template<int C>
-// __global__ void preprocessCUDA(
-// 	int P, int D, int M,
-// 	const float3* means,
-// 	const int* radii,
-// 	const float* shs,
-// 	const bool* clamped,
-// 	const glm::vec3* scales,
-// 	const glm::vec4* rotations,
-// 	const float scale_modifier,
-// 	const float* view,
-// 	const float* proj,
-// 	const glm::vec3* campos,
-// 	const float3* dL_dmean2D,
-// 	glm::vec3* dL_dmeans,
-// 	float* dL_dcolor,
-// 	float* dL_ddepth,
-// 	float* dL_dcov3D,
-// 	float* dL_dsh,
-// 	glm::vec3* dL_dscale,
-// 	glm::vec4* dL_drot)
-// {
-// 	auto idx = cg::this_grid().thread_rank();
-// 	if (idx >= P || !(radii[idx] > 0))
-// 		return;
-
-// 	float3 m = means[idx];
-
-// 	// Taking care of gradients from the screenspace points
-// 	float4 m_hom = transformPoint4x4(m, proj);
-// 	float m_w = 1.0f / (m_hom.w + 0.0000001f);
-
-// 	// Compute loss gradient w.r.t. 3D means due to gradients of 2D means
-// 	// from rendering procedure
-// 	glm::vec3 dL_dmean;
-// 	float mul1 = (proj[0] * m.x + proj[4] * m.y + proj[8] * m.z + proj[12]) * m_w * m_w;
-// 	float mul2 = (proj[1] * m.x + proj[5] * m.y + proj[9] * m.z + proj[13]) * m_w * m_w;
-// 	dL_dmean.x = (proj[0] * m_w - proj[3] * mul1) * dL_dmean2D[idx].x + (proj[1] * m_w - proj[3] * mul2) * dL_dmean2D[idx].y;
-// 	dL_dmean.y = (proj[4] * m_w - proj[7] * mul1) * dL_dmean2D[idx].x + (proj[5] * m_w - proj[7] * mul2) * dL_dmean2D[idx].y;
-// 	dL_dmean.z = (proj[8] * m_w - proj[11] * mul1) * dL_dmean2D[idx].x + (proj[9] * m_w - proj[11] * mul2) * dL_dmean2D[idx].y;
-
-// 	// That's the second part of the mean gradient. Previous computation
-// 	// of cov2D and following SH conversion also affects it.
-// 	dL_dmeans[idx] += dL_dmean;
-
-// 	// the w must be equal to 1 for view^T * [x,y,z,1]
-// 	float3 m_view = transformPoint4x3(m, view);
-
-// 	// Compute loss gradient w.r.t. 3D means due to gradients of depth
-// 	// from rendering procedure
-// 	glm::vec3 dL_dmean2;
-// 	float mul3 = view[2] * m.x + view[6] * m.y + view[10] * m.z + view[14];
-// 	dL_dmean2.x = (view[2] - view[3] * mul3) * dL_ddepth[idx];
-// 	dL_dmean2.y = (view[6] - view[7] * mul3) * dL_ddepth[idx];
-// 	dL_dmean2.z = (view[10] - view[11] * mul3) * dL_ddepth[idx];
-
-// 	// That's the third part of the mean gradient.
-// 	dL_dmeans[idx] += dL_dmean2;
-
-// 	// Compute gradient updates due to computing colors from SHs
-// 	if (shs)
-// 		computeColorFromSH(idx, D, M, (glm::vec3*)means, *campos, shs, clamped, (glm::vec3*)dL_dcolor, (glm::vec3*)dL_dmeans, (glm::vec3*)dL_dsh);
-
-// 	// Compute gradient updates due to computing covariance from scale/rotation
-// 	if (scales)
-// 		computeCovarianceDerivatives(idx, scales[idx], scale_modifier, rotations[idx], dL_dcov3D, dL_dscale, dL_drot);
-// }
-
 template<int SH_DEGREE>
 __global__ void backwardPreprocessingKernel(
     int point_count,
@@ -588,32 +289,235 @@ __global__ void backwardPreprocessingKernel(
 
     position_gradients[point_idx] = screen_deriv;
     if (sh_coefficients != nullptr) {
-        computeColorFromSH(
-            point_idx,
-            max_sh_degree,
-            sh_coeff_count,
-            (const glm::vec3*)positions,
-            *camera_origin,
-            sh_coefficients,
-            clamped_status,
-            (glm::vec3*)color_gradients,
-            (glm::vec3*)position_gradients,
-            (glm::vec3*)sh_gradients);
-    }
+        int idx = point_idx;
+        int deg = max_sh_degree;
+        int max_coeffs = sh_coeff_count;
+        const glm::vec3* means = (const glm::vec3*)positions;
+        glm::vec3 campos = *camera_origin;
+        const float* shs = sh_coefficients;
+        const bool* clamped = clamped_status;
+        const glm::vec3* dL_dcolor = (glm::vec3*)color_gradients;
+        glm::vec3* dL_dmeans = (glm::vec3*)position_gradients;
+        glm::vec3* dL_dshs = (glm::vec3*)sh_gradients;
 
-    if (scale_params != nullptr) {
-        computeCovarianceDerivatives(
-            point_idx,
-            scale_params[point_idx],
-            scale_adjustment,
-            rotation_params[point_idx],
-            cov3D_gradients,
-            scale_gradients,
-            rotation_gradients);
+        glm::vec3 gaussian_center = means[idx];
+        float offset_x = gaussian_center.x - campos.x;
+        float offset_y = gaussian_center.y - campos.y;
+        float offset_z = gaussian_center.z - campos.z;
+        
+        glm::vec3 raw_direction(offset_x, offset_y, offset_z);
+        
+        float mag_squared = offset_x * offset_x + offset_y * offset_y + offset_z * offset_z;
+        float mag = sqrtf(mag_squared + 1e-10f);
+        float inv_mag = 1.0f / mag;
+        
+        float dir_x = offset_x * inv_mag;
+        float dir_y = offset_y * inv_mag;
+        float dir_z = offset_z * inv_mag;
+        
+        float x2 = dir_x * dir_x;
+        float y2 = dir_y * dir_y;
+        float z2 = dir_z * dir_z;
+        float xy = dir_x * dir_y;
+        float xz = dir_x * dir_z;
+        float yz = dir_y * dir_z;
+        float x2_minus_y2 = x2 - y2;
+        float three_x2 = 3.0f * x2;
+        float three_y2 = 3.0f * y2;
+        float four_z2 = 4.0f * z2;
+        float two_z2 = 2.0f * z2;
+        
+        glm::vec3 clamp_factors(
+            clamped[3 * idx + 0] ? 0.0f : 1.0f,
+            clamped[3 * idx + 1] ? 0.0f : 1.0f,
+            clamped[3 * idx + 2] ? 0.0f : 1.0f
+        );
+        
+        glm::vec3 clamped_dL_dRGB = dL_dcolor[idx] * clamp_factors;
+        
+        glm::vec3* sh_data = ((glm::vec3*)shs) + idx * max_coeffs;
+        glm::vec3* gradient_sh = dL_dshs + idx * max_coeffs;
+        
+        float basis_functions[16];
+        basis_functions[0] = SH_C0;
+        basis_functions[1] = -SH_C1 * dir_y;
+        basis_functions[2] = SH_C1 * dir_z;
+        basis_functions[3] = -SH_C1 * dir_x;
+        basis_functions[4] = SH_C2[0] * xy;
+        basis_functions[5] = SH_C2[1] * yz;
+        basis_functions[6] = SH_C2[2] * (two_z2 - x2 - y2);
+        basis_functions[7] = SH_C2[3] * xz;
+        basis_functions[8] = SH_C2[4] * x2_minus_y2;
+        basis_functions[9] = SH_C3[0] * dir_y * (three_x2 - y2);
+        basis_functions[10] = SH_C3[1] * xy * dir_z;
+        basis_functions[11] = SH_C3[2] * dir_y * (four_z2 - x2 - y2);
+        basis_functions[12] = SH_C3[3] * dir_z * (two_z2 - three_x2 - three_y2);
+        basis_functions[13] = SH_C3[4] * dir_x * (four_z2 - x2 - y2);
+        basis_functions[14] = SH_C3[5] * dir_z * x2_minus_y2;
+        basis_functions[15] = SH_C3[6] * dir_x * (x2 - three_y2);
+        
+        for (int i = 0; i < 16; ++i) {
+            gradient_sh[i] = basis_functions[i] * clamped_dL_dRGB;
+        }
+        
+        glm::vec3 accumulated_gradient(0.0f, 0.0f, 0.0f);
+        
+        accumulated_gradient.x -= SH_C1 * glm::dot(sh_data[3], clamped_dL_dRGB);
+        accumulated_gradient.y -= SH_C1 * glm::dot(sh_data[1], clamped_dL_dRGB);
+        accumulated_gradient.z += SH_C1 * glm::dot(sh_data[2], clamped_dL_dRGB);
+        
+        glm::vec3 deg2_contrib_x(
+            SH_C2[0] * dir_y * sh_data[4] + 
+            SH_C2[2] * (-2.0f * dir_x) * sh_data[6] + 
+            SH_C2[3] * dir_z * sh_data[7] + 
+            SH_C2[4] * (2.0f * dir_x) * sh_data[8]
+        );
+        
+        glm::vec3 deg2_contrib_y(
+            SH_C2[0] * dir_x * sh_data[4] + 
+            SH_C2[1] * dir_z * sh_data[5] + 
+            SH_C2[2] * (-2.0f * dir_y) * sh_data[6] + 
+            SH_C2[4] * (-2.0f * dir_y) * sh_data[8]
+        );
+        
+        glm::vec3 deg2_contrib_z(
+            SH_C2[1] * dir_y * sh_data[5] + 
+            SH_C2[2] * (4.0f * dir_z) * sh_data[6] + 
+            SH_C2[3] * dir_x * sh_data[7]
+        );
+        
+        accumulated_gradient.x += glm::dot(deg2_contrib_x, clamped_dL_dRGB);
+        accumulated_gradient.y += glm::dot(deg2_contrib_y, clamped_dL_dRGB);
+        accumulated_gradient.z += glm::dot(deg2_contrib_z, clamped_dL_dRGB);
+        
+        float deg3_factors_x[7] = {
+            SH_C3[0] * 6.0f * xy,
+            SH_C3[1] * yz,
+            SH_C3[2] * (-2.0f * xy),
+            SH_C3[3] * (-6.0f * xz),
+            SH_C3[4] * (four_z2 - 3.0f * x2 - y2),
+            SH_C3[5] * 2.0f * xz,
+            SH_C3[6] * 3.0f * x2_minus_y2
+        };
+        
+        float deg3_factors_y[7] = {
+            SH_C3[0] * 3.0f * (x2 - y2),
+            SH_C3[1] * xz,
+            SH_C3[2] * (four_z2 - 3.0f * y2 - x2),
+            SH_C3[3] * (-6.0f * yz),
+            SH_C3[4] * (-2.0f * xy),
+            SH_C3[5] * (-2.0f * yz),
+            SH_C3[6] * (-6.0f * xy)
+        };
+        
+        float deg3_factors_z[7] = {
+            0.0f,
+            SH_C3[1] * xy,
+            SH_C3[2] * 8.0f * yz,
+            SH_C3[3] * 3.0f * (two_z2 - x2 - y2),
+            SH_C3[4] * 8.0f * xz,
+            SH_C3[5] * x2_minus_y2,
+            0.0f
+        };
+        
+        glm::vec3 deg3_x(0.0f), deg3_y(0.0f), deg3_z(0.0f);
+        for (int i = 0; i < 7; ++i) {
+            deg3_x += deg3_factors_x[i] * sh_data[9 + i];
+            deg3_y += deg3_factors_y[i] * sh_data[9 + i];
+            deg3_z += deg3_factors_z[i] * sh_data[9 + i];
+        }
+        
+        accumulated_gradient.x += glm::dot(deg3_x, clamped_dL_dRGB);
+        accumulated_gradient.y += glm::dot(deg3_y, clamped_dL_dRGB);
+        accumulated_gradient.z += glm::dot(deg3_z, clamped_dL_dRGB);
+        float inv_mag_cubed = inv_mag * inv_mag * inv_mag;
+        glm::mat3 outer_prod(
+            raw_direction.x * raw_direction.x, raw_direction.x * raw_direction.y, raw_direction.x * raw_direction.z,
+            raw_direction.y * raw_direction.x, raw_direction.y * raw_direction.y, raw_direction.y * raw_direction.z,
+            raw_direction.z * raw_direction.x, raw_direction.z * raw_direction.y, raw_direction.z * raw_direction.z
+        );
+        
+        glm::mat3 scaled_I = glm::mat3(mag_squared);
+        glm::mat3 jacobian = (scaled_I - outer_prod) * inv_mag_cubed;
+        glm::vec3 final_mean_gradient = jacobian * accumulated_gradient;
+        dL_dmeans[idx] += final_mean_gradient;
+	}
+
+    if (scale_params != nullptr) 
+	{
+        int element_index = point_idx;
+        const glm::vec3 dimensions = scale_params[point_idx];
+        float scaling_factor = scale_adjustment;
+        const glm::vec4 rotation_quat = rotation_params[point_idx];
+        const float* incoming_grads = cov3D_gradients;
+        glm::vec3* dimension_derivs = scale_gradients;
+        glm::vec4* rotation_derivs = rotation_gradients;
+
+        const float qw = rotation_quat.x;
+        const float qx = rotation_quat.y;
+        const float qy = rotation_quat.z;
+        const float qz = rotation_quat.w;
+        const float xx = qx * qx, yy = qy * qy, zz = qz * qz;
+        const float xy = qx * qy, xz = qx * qz, yz = qy * qz;
+        const float xw = qx * qw, yw = qy * qw, zw = qz * qw;
+        const glm::vec3 scaled_dims = scaling_factor * dimensions;
+        const float sx = scaled_dims.x, sy = scaled_dims.y, sz = scaled_dims.z;
+        const float m11 = sx * (1.f - 2.f*(yy + zz));
+        const float m12 = sx * 2.f*(xy - zw);
+        const float m13 = sx * 2.f*(xz + yw);
+        
+        const float m21 = sy * 2.f*(xy + zw);
+        const float m22 = sy * (1.f - 2.f*(xx + zz));
+        const float m23 = sy * 2.f*(yz - xw);
+        
+        const float m31 = sz * 2.f*(xz - yw);
+        const float m32 = sz * 2.f*(yz + xw);
+        const float m33 = sz * (1.f - 2.f*(xx + yy));
+
+        const float* grad = incoming_grads + 6 * element_index;
+        const float g11 = grad[0], g12 = grad[1], g13 = grad[2];
+        const float g22 = grad[3], g23 = grad[4], g33 = grad[5];
+
+        const float a11 = 2.f * (m11*g11 + m12*g12 + m13*g13);
+        const float a12 = 2.f * (m11*g12 + m12*g22 + m13*g23);
+        const float a13 = 2.f * (m11*g13 + m12*g23 + m13*g33);
+        
+        const float a21 = 2.f * (m21*g11 + m22*g12 + m23*g13);
+        const float a22 = 2.f * (m21*g12 + m22*g22 + m23*g23);
+        const float a23 = 2.f * (m21*g13 + m22*g23 + m23*g33);
+        
+        const float a31 = 2.f * (m31*g11 + m32*g12 + m33*g13);
+        const float a32 = 2.f * (m31*g12 + m32*g22 + m33*g23);
+        const float a33 = 2.f * (m31*g13 + m32*g23 + m33*g33);
+
+        glm::vec3* dim_deriv = dimension_derivs + element_index;
+        dim_deriv->x = (1.f - 2.f*(yy + zz))*a11 + 2.f*(xy - zw)*a12 + 2.f*(xz + yw)*a13;
+        dim_deriv->y = 2.f*(xy + zw)*a21 + (1.f - 2.f*(xx + zz))*a22 + 2.f*(yz - xw)*a23;
+        dim_deriv->z = 2.f*(xz - yw)*a31 + 2.f*(yz + xw)*a32 + (1.f - 2.f*(xx + yy))*a33;
+
+        const float dq0 = 4.f * (-sz*(a31*yw - a32*xw + a33*xy) + sy*(a21*zw - a22*xz + a23*yy)+ 
+        sx*(a12*zw - a13*yw - a11*yz));
+
+        const float dq1 = 4.f * (sz*(a31*zw + a32*zz - a33*yz) - 
+            sy*(a21*yw + a22*xy + a23*xx) + 
+            sx*(a12*yy + a13*zw + a11*xz));
+
+        const float dq2 = 4.f * (
+            -sz*(a31*xx + a32*xw + a33*xz) + 
+            sy*(a21*zw + a22*yy + a23*yw) - 
+            sx*(a12*xw + a13*xx + a11*xy)
+        );
+
+        const float dq3 = 4.f * (
+            sz*(a31*xw - a32*xx + a33*xy) - 
+            sy*(a21*xz - a22*zw + a23*yz) + 
+            sx*(a12*yz - a13*zz + a11*yy)
+        );
+        float4* rot_deriv = (float4*)(rotation_derivs + element_index);
+        *rot_deriv = float4{dq0, dq1, dq2, dq3};
     }
 }
 
-// Backward version of the rendering procedure.
 template <uint32_t C>
 __global__ void __launch_bounds__(BLOCK_X * BLOCK_Y)
 renderCUDA(
@@ -637,7 +541,6 @@ renderCUDA(
 	float* __restrict__ dL_ddepths
 )
 {
-	// We rasterize again. Compute necessary block info.
 	auto block = cg::this_thread_block();
 	const uint32_t horizontal_blocks = (W + BLOCK_X - 1) / BLOCK_X;
 	const uint2 pix_min = { block.group_index().x * BLOCK_X, block.group_index().y * BLOCK_Y };
@@ -659,14 +562,8 @@ renderCUDA(
 	__shared__ float4 collected_conic_opacity[BLOCK_SIZE];
 	__shared__ float collected_colors[C * BLOCK_SIZE];
 	__shared__ float collected_depths[BLOCK_SIZE];
-
-	// In the forward, we stored the final value for T, the
-	// product of all (1 - alpha) factors. 
 	const float T_final = inside ? (1 - alphas[pix_id]) : 0;
 	float T = T_final;
-
-	// We start from the back. The ID of the last contributing
-	// Gaussian is known from each pixel from the forward.
 	uint32_t contributor = toDo;
 	const int last_contributor = inside ? n_contrib[pix_id] : 0;
 
@@ -686,17 +583,10 @@ renderCUDA(
 	float last_alpha = 0;
 	float last_color[C] = { 0 };
 	float last_depth = 0;
-
-	// Gradient of pixel coordinate w.r.t. normalized 
-	// screen-space viewport corrdinates (-1 to 1)
 	const float ddelx_dx = 0.5 * W;
 	const float ddely_dy = 0.5 * H;
-
-	// Traverse all Gaussians
 	for (int i = 0; i < rounds; i++, toDo -= BLOCK_SIZE)
 	{
-		// Load auxiliary data into shared memory, start in the BACK
-		// and load them in revers order.
 		block.sync();
 		const int progress = i * BLOCK_SIZE + block.thread_rank();
 		if (range.x + progress < range.y)
@@ -710,17 +600,12 @@ renderCUDA(
 			collected_depths[block.thread_rank()] = depths[coll_id];
 		}
 		block.sync();
-
-		// Iterate over Gaussians
 		for (int j = 0; !done && j < min(BLOCK_SIZE, toDo); j++)
 		{
-			// Keep track of current Gaussian ID. Skip, if this one
-			// is behind the last contributor for this pixel.
 			contributor--;
 			if (contributor >= last_contributor)
 				continue;
 
-			// Compute blending values, as before.
 			const float2 xy = collected_xy[j];
 			const float2 d = { xy.x - pixf.x, xy.y - pixf.y };
 			const float4 con_o = collected_conic_opacity[j];
@@ -736,67 +621,44 @@ renderCUDA(
 			T = T / (1.f - alpha);
 			const float dchannel_dcolor = alpha * T;
 			const float dpixel_depth_ddepth = alpha * T;
-
-			// Propagate gradients to per-Gaussian colors and keep
-			// gradients w.r.t. alpha (blending factor for a Gaussian/pixel
-			// pair).
 			float dL_dopa = 0.0f;
 			const int global_id = collected_id[j];
 			for (int ch = 0; ch < C; ch++)
 			{
 				const float c = collected_colors[ch * BLOCK_SIZE + j];
-				// Update last color (to be used in the next iteration)
 				accum_rec[ch] = last_alpha * last_color[ch] + (1.f - last_alpha) * accum_rec[ch];
 				last_color[ch] = c;
 
 				const float dL_dchannel = dL_dpixel[ch];
 				dL_dopa += (c - accum_rec[ch]) * dL_dchannel;
-				// Update the gradients w.r.t. color of the Gaussian. 
-				// Atomic, since this pixel is just one of potentially
-				// many that were affected by this Gaussian.
 				atomicAdd(&(dL_dcolors[global_id * C + ch]), dchannel_dcolor * dL_dchannel);
 			}
 			
-			// Propagate gradients from pixel depth to opacity
 			const float c_d = collected_depths[j];
 			accum_depth_rec = last_alpha * last_depth + (1.f - last_alpha) * accum_depth_rec;
 			last_depth = c_d;
 			dL_dopa += (c_d - accum_depth_rec) * dL_dpixel_depth;
 			atomicAdd(&(dL_ddepths[global_id]), dpixel_depth_ddepth * dL_dpixel_depth);
 
-			// Propagate gradients from pixel alpha (weights_sum) to opacity
 			accum_alpha_rec = last_alpha + (1.f - last_alpha) * accum_alpha_rec;
 			dL_dopa += (1 - accum_alpha_rec) * dL_dalpha; //- (alpha - accum_alpha_rec) * dL_dalpha;
 
 			dL_dopa *= T;
-			// Update last alpha (to be used in the next iteration)
 			last_alpha = alpha;
-
-			// Account for fact that alpha also influences how much of
-			// the background color is added if nothing left to blend
 			float bg_dot_dpixel = 0;
 			for (int i = 0; i < C; i++)
 				bg_dot_dpixel += bg_color[i] * dL_dpixel[i];
 			dL_dopa += (-T_final / (1.f - alpha)) * bg_dot_dpixel;
-
-
-			// Helpful reusable temporary variables
 			const float dL_dG = con_o.w * dL_dopa;
 			const float gdx = G * d.x;
 			const float gdy = G * d.y;
 			const float dG_ddelx = -gdx * con_o.x - gdy * con_o.y;
 			const float dG_ddely = -gdy * con_o.z - gdx * con_o.y;
-
-			// Update gradients w.r.t. 2D mean position of the Gaussian
 			atomicAdd(&dL_dmean2D[global_id].x, dL_dG * dG_ddelx * ddelx_dx);
 			atomicAdd(&dL_dmean2D[global_id].y, dL_dG * dG_ddely * ddely_dy);
-
-			// Update gradients w.r.t. 2D covariance (2x2 matrix, symmetric)
 			atomicAdd(&dL_dconic2D[global_id].x, -0.5f * gdx * d.x * dL_dG);
 			atomicAdd(&dL_dconic2D[global_id].y, -0.5f * gdx * d.y * dL_dG);
 			atomicAdd(&dL_dconic2D[global_id].w, -0.5f * gdy * d.y * dL_dG);
-
-			// Update gradients w.r.t. opacity of the Gaussian
 			atomicAdd(&(dL_dopacity[global_id]), G * dL_dopa);
 		}
 	}
@@ -827,10 +689,6 @@ void BACKWARD::preprocess(
 	glm::vec3* dL_dscale,
 	glm::vec4* dL_drot)
 {
-	// Propagate gradients for the path of 2D conic matrix computation. 
-	// Somewhat long, thus it is its own kernel rather than being part of 
-	// "preprocess". When done, loss gradient w.r.t. 3D means has been
-	// modified and gradient w.r.t. 3D covariance matrix has been computed.	
 	computeCov2DCUDA << <(P + 255) / 256, 256 >> > (
 		P,
 		means3D,
@@ -845,9 +703,6 @@ void BACKWARD::preprocess(
 		(float3*)dL_dmean3D,
 		dL_dcov3D);
 
-	// Propagate gradients for remaining steps: finish 3D mean gradients,
-	// propagate color gradients to SH (if desireD), propagate 3D covariance
-	// matrix gradients to scale and rotation.
 	backwardPreprocessingKernel<NUM_CHANNELS> << < (P + 255) / 256, 256 >> > (
 		P, D, M,
 		(float3*)means3D,
