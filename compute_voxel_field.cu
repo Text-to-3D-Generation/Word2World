@@ -3,10 +3,7 @@
 #include <math.h>
 #include <stdio.h>
 
-__device__ float compute_3d_gaussian_coefficient_device(
-    float x, float y, float z,
-    float a, float b, float c, float d, float e, float f
-) {
+__device__ float compute_3d_gaussian_coefficient_device(float x, float y, float z, float a, float b, float c, float d, float e, float f) {
     float det = a * d * f + 2 * e * c * b - e * e * a - c * c * d - b * b * f;
     float inv_det = 1.0f / (det + 1e-24f);
     
@@ -25,16 +22,7 @@ __device__ float compute_3d_gaussian_coefficient_device(
     return expf(power);
 }
 
-__global__ void compute_voxel_field_kernel(
-    float* occ,                  // Output occupancy field
-    const float* means,          // Gaussian means (N, 3)
-    const float* covs,           // Gaussian covariances (N, 6)
-    const float* opacities,      // Gaussian opacities (N,)
-    const int n_gaussians,       // Number of Gaussians
-    const int resolution,        // Voxel grid resolution
-    const int num_blocks,        // Number of blocks per dimension
-    const float relax_ratio      // Relaxation ratio for block boundaries
-) {
+__global__ void compute_voxel_field_kernel(float* occ, const float* means, const float* covs, const float* opacities, const int n_gaussians, const int resolution, const int num_blocks, const float relax_ratio) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     int idy = blockIdx.y * blockDim.y + threadIdx.y;
     int idz = blockIdx.z * blockDim.z + threadIdx.z;
@@ -91,16 +79,7 @@ __global__ void compute_voxel_field_kernel(
 }
 
 extern "C" {
-    __declspec(dllexport) void compute_voxel_field_cuda(
-        float* h_occ,              // Host output array
-        const float* h_means,      // Host means array
-        const float* h_covs,       // Host covariances array
-        const float* h_opacities,  // Host opacities array
-        const int n_gaussians,
-        const int resolution,
-        const int num_blocks,
-        const float relax_ratio
-    ) {
+    __declspec(dllexport) void compute_voxel_field_cuda(float* h_occ, const float* h_means, const float* h_covs, const float* h_opacities, const int n_gaussians, const int resolution, const int num_blocks, const float relax_ratio) {
         size_t occ_size = resolution * resolution * resolution * sizeof(float);
         size_t means_size = n_gaussians * 3 * sizeof(float);
         size_t covs_size = n_gaussians * 6 * sizeof(float);
