@@ -1,12 +1,9 @@
 import torch
 import math
-import numpy as np
-from typing import List, Optional, Dict, Union
 from PointE import PointEModel
 from gaussians_handler import GaussiansHandler
 from cudaForwardBackwardRenderer import _C 
 import torch
-from typing import Tuple
 
 def fill_missing_attributes(means3D, shs, colors_precomp, scales, rotations, cov3D_precomp):
     empty_like = lambda x: torch.empty(0, device=means3D.device, dtype=x.dtype if isinstance(x, torch.Tensor) else torch.float32)
@@ -37,11 +34,6 @@ def _render_gaussians_inline(
         tanfovx, tanfovy,             # -- rs.tanfovx / rs.tanfovy
         sh_degree, campos,            # -- rs.sh_degree / rs.campos
         prefiltered=False, debug=False):
-    """
-    Inline Gaussian rasterizer that hides the autograd.Function
-    instead of declaring it at module scope.  All raster-settings
-    are passed explicitly (no SimpleNamespace needed).
-    """
     scale_modifier = 1
     shs, colors_precomp, scales, rotations, cov3D_precomp = fill_missing_attributes(means3D, shs, colors_precomp, scales, rotations, cov3D_precomp)
     focal_x = 800/(2*tanfovx)
@@ -113,9 +105,6 @@ def _render_gaussians_inline(
 
         _render_gaussians_inline._Func = _Func
 
-    # ------------------------------------------------------------
-    # 3.  Invoke the cached Function
-    # ------------------------------------------------------------
     return _render_gaussians_inline._Func.apply(means3D, means2D, shs, colors_precomp, opacity,scales, rotations, cov3D_precomp,bg, scale_modifier, viewmatrix, projmatrix,
     tanfovx, tanfovy, sh_degree, campos,
     prefiltered, debug)
