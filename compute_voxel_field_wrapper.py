@@ -78,14 +78,7 @@ def load_cuda_library():
     return lib
 
 
-def computeVoxelFeildsCuda(
-    means: torch.Tensor,
-    covs: torch.Tensor, 
-    opacities: torch.Tensor,
-    resolution: int = 128,
-    num_blocks: int = 16,
-    relax_ratio: float = 1.5
-) -> torch.Tensor:
+def computeVoxelFeildsCuda(means, covs, opacities, resolution, num_blocks, relax_ratio):
 
     lib = load_cuda_library()
     
@@ -117,8 +110,7 @@ def computeVoxelFeildsCuda(
 
 
 
-def prepare_gaussians_for_extraction(means,stds,quaternions,opacities,opacity_threshold
-) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, float, torch.Tensor]:
+def prepare_gaussians_for_extraction(means,stds,quaternions,opacities,opacity_threshold):
 
     mask = (opacities > opacity_threshold).squeeze(-1)
     
