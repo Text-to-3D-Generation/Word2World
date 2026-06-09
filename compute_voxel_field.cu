@@ -112,7 +112,7 @@ extern "C" {
         
         cudaError_t error = cudaGetLastError();
         if (error != cudaSuccess) {
-            printf("CUDA error: %s\n", cudaGetErrorString(error));
+            printf("CUDA ERROR: %s\n", cudaGetErrorString(error));
         }
         
         cudaMemcpy(h_occ, d_occ, occ_size, cudaMemcpyDeviceToHost);
