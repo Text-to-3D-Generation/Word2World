@@ -70,7 +70,7 @@ def load_cuda_library():
         ctypes.c_float                    
     ]
     
-    print(f"Successfully loaded CUDA library from: {lib_path if 'lib_path' in locals() else lib_name}")
+    print(f"Successfully loaded the CUDA library from: {lib_path if 'lib_path' in locals() else lib_name}")
     
     return lib
 
