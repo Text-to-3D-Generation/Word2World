@@ -1,4 +1,4 @@
-# Word2World — Text-to-3D Generation with 3D Gaussian Splatting
+# Word2World: Text-to-3D Generation with 3D Gaussian Splatting
 
 Word2World is a research system for generating 3D scenes from text prompts. It combines **3D Gaussian Splatting** with **Score Distillation Sampling (SDS)** guidance from a multi-view diffusion model (MVDream) to optimize a set of 3D Gaussians that represent a coherent object or scene described by a text prompt.
 
